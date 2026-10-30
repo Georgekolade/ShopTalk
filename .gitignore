@@ -1,0 +1,60 @@
+# Dot folders (tool state, caches, VCS, local data)
+.*/
+.playwright-mcp/
+.venv/
+.next/
+.npm-cache/
+.app-data/
+.pgdata/
+
+# Docs and binaries: ignore all Markdown except README, and all PDFs
+*.md
+!README.md
+*.pdf
+
+# Secrets and environment
+.env
+.env.*
+!.env.example
+ngrok.yml
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.egg
+
+# Django
+db.sqlite3
+*.sqlite3
+media/
+staticfiles/
+*.log
+
+# Node / Next.js
+node_modules/
+*.tsbuildinfo
+dist/
+out/
+build/
+.pnp.*
+yarn-error.log*
+npm-debug.log*
+
+# Test / coverage output
+.coverage
+htmlcov/
+coverage/
+.pytest_cache/
+
+# Local artifacts from browser checks and servers
+linea-*.png
+app-*.png
+tools/pw-out/
+tools/mindrally-skills/
+*-server.log
+*-server.err.log
+
+# OS / editors
+.DS_Store
+Thumbs.db

@@ -1,0 +1,41 @@
+{
+  "name": "frontend",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint"
+  },
+  "dependencies": {
+    "chart.js": "^4.6.1",
+    "country-data-list": "^1.6.3",
+    "datatables.net": "^3.1.4",
+    "datatables.net-buttons": "^4.1.2",
+    "datatables.net-buttons-dt": "^4.1.2",
+    "datatables.net-dt": "^3.1.4",
+    "datatables.net-responsive": "^4.1.1",
+    "datatables.net-responsive-dt": "^4.1.1",
+    "jquery": "^4.0.0",
+    "jszip": "^3.10.2",
+    "lucide-react": "^1.62.0",
+    "next": "16.4.3",
+    "pdfmake": "^0.3.13",
+    "react": "19.3.0",
+    "react-chartjs-2": "^5.3.1",
+    "react-dom": "19.3.0",
+    "select2": "^4.1.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/turbopack": "^4",
+    "@types/jquery": "^4.0.1",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.4.3",
+    "tailwindcss": "^4",
+    "typescript": "^5"
+  }
+}

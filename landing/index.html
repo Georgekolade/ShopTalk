@@ -1,0 +1,373 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ShopTalk AI: Talk to your business. It answers with real numbers.</title>
+<meta name="description" content="Voice-and-text business operations for small shops. Record sales, stock and expenses by conversation; answers come from your real records." />
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+
+<header id="nav">
+  <div class="nav-bar">
+    <a class="nav-brand" href="#hero" aria-label="ShopTalk AI, back to top">
+      <svg class="nav-mark" viewBox="0 0 36 24" aria-hidden="true"><path class="mark-a" d="M2 12c4-7 8-7 12 0s8 7 12 0" fill="none"/><path class="mark-b" d="M10 12c4-7 8-7 12 0s8 7 12 0" fill="none"/></svg>
+      <span>ShopTalk</span>
+    </a>
+    <nav class="nav-links" aria-label="Sections">
+      <a href="#listen">How it works</a>
+      <a href="#calls">Assistant</a>
+      <a href="#rooms">In the shop</a>
+      <a href="#faq">Questions</a>
+    </nav>
+    <a class="btn btn-sm nav-cta" href="http://localhost:3000/login"><span class="btn-label">Start free</span><span class="btn-wave" aria-hidden="true"><i></i><i></i><i></i></span></a>
+    <button class="nav-toggle" type="button" aria-label="Open menu" id="menuOpen">☰</button>
+  </div>
+  <div class="menu" id="menu" hidden>
+    <button class="menu-close" type="button" id="menuClose" aria-label="Close menu">✕</button>
+    <nav class="menu-links">
+      <a href="#listen">How it works</a>
+      <a href="#calls">Assistant</a>
+      <a href="#rooms">In the shop</a>
+      <a href="#voices">Stories</a>
+      <a href="#faq">Questions</a>
+      <a href="http://localhost:3000/login">Start free</a>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+  <!-- HERO: full-bleed navy, copy left, shop visual right, caption chips on arcs -->
+  <section id="hero">
+    <div class="hero-media" aria-hidden="true">
+      <div class="hero-photo">
+        <img class="hero-img" src="images/hero.jpg" alt="" width="1600" height="1067" loading="eager" />
+        <div class="hero-shade"></div>
+        <div class="hero-phone">
+          <p class="hp-head">Ada's Provisions · live</p>
+          <p class="hp-msg hp-in">Sell 2 garri and 1 rice</p>
+          <p class="hp-msg hp-out">Sale ₦18,500, confirm to record it?</p>
+          <p class="hp-msg hp-in">Yes, confirm</p>
+          <p class="hp-msg hp-done">✓ Recorded · Receipt R-000142</p>
+        </div>
+      </div>
+    </div>
+    <svg class="hero-lines" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+      <ellipse class="hero-arc" cx="78" cy="136" rx="40" ry="64" pathLength="1" />
+      <ellipse class="hero-flow" cx="78" cy="136" rx="40" ry="64" pathLength="1" />
+      <ellipse class="hero-arc" cx="52" cy="176" rx="78" ry="96" pathLength="1" />
+      <ellipse class="hero-flow" cx="52" cy="176" rx="78" ry="96" pathLength="1" />
+    </svg>
+    <span class="caption caption-w hero-chip chip-1"><span class="wave"><i></i><i></i><i></i><i></i></span>Sold 2 garri, 1 rice</span>
+    <span class="caption caption-g hero-chip chip-3"><span class="wave"><i></i><i></i><i></i><i></i></span>Receipt R-000142 saved</span>
+
+    <div class="wrap hero-copy">
+      <div class="hero-intro">
+        <h1 class="t-hero">Every sale, written as it’s spoken.</h1>
+        <div class="hero-lower">
+          <p class="t-lead">ShopTalk turns your voice, and your keyboard, into verified business records. Sales, stock and expenses, priced by your backend and confirmed by you. Never guessed.</p>
+          <ul class="hero-proof">
+            <li><span class="star">★</span> Built for small shops</li>
+            <li><span class="tick">✓</span> Free to start</li>
+            <li><span class="tick">✓</span> Your records stay yours</li>
+          </ul>
+          <div class="hero-actions">
+            <a class="btn" href="http://localhost:3000/login"><span class="btn-label">Get ShopTalk free</span><span class="btn-wave" aria-hidden="true"><i></i><i></i><i></i></span></a>
+            <a class="link" href="#listen">See how it works</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- LISTEN: cream sheet, split voice/read panels -->
+  <section id="listen">
+    <div class="band band-cream"></div>
+    <div class="wrap">
+      <div class="head-grid">
+        <h2 class="t-h2">Nothing lost between a voice and a record.</h2>
+        <p class="t-lead muted word-reveal">No gaps, no re-typing, no asking twice. ShopTalk exists so a shop owner can say what happened, a sale, a delivery, an expense, and watch it become a checked record with real prices from the catalogue.</p>
+      </div>
+      <div class="listen-panels">
+        <div class="listen-panel panel-voice">
+          <p class="panel-label">You say it</p>
+          <div class="wavebars" aria-hidden="true">
+            <i style="--h:.4"></i><i style="--h:.7"></i><i style="--h:.5"></i><i style="--h:.9"></i><i style="--h:.6"></i><i style="--h:1"></i><i style="--h:.55"></i><i style="--h:.8"></i><i style="--h:.45"></i><i style="--h:.75"></i><i style="--h:.6"></i><i style="--h:.95"></i><i style="--h:.5"></i><i style="--h:.7"></i><i style="--h:.4"></i><i style="--h:.65"></i>
+          </div>
+        </div>
+        <div class="listen-panel panel-read">
+          <p class="panel-label">ShopTalk writes it</p>
+          <p class="caption caption-w listen-row"><span class="wave"><i></i><i></i><i></i><i></i></span>Sell 2 garri and 1 rice</p>
+          <p class="caption caption-w listen-row"><span class="wave"><i></i><i></i><i></i><i></i></span>Spent ₦5,000 on transport</p>
+          <p class="caption caption-w listen-row"><span class="wave"><i></i><i></i><i></i><i></i></span>Received 20 bags of rice</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CALLS: navy, feature list left, sticky phone right -->
+  <section id="calls">
+    <div class="band band-navy"></div>
+    <div class="wrap calls-inner">
+      <div class="head-grid">
+        <div>
+          <h2 class="t-h2">The assistant does the paperwork.</h2>
+          <a class="btn" href="http://localhost:3000/login"><span class="btn-label">Open the assistant</span><span class="btn-wave" aria-hidden="true"><i></i><i></i><i></i></span></a>
+        </div>
+        <p class="t-lead pale">Talk or type. ShopTalk resolves your products, checks stock, totals on the server, and waits for your yes before anything is saved.</p>
+      </div>
+      <div class="calls-grid">
+        <div class="calls-list">
+          <article class="calls-item">
+            <h3 class="t-h3">Sales, priced word for word</h3>
+            <p class="t-body pale">“Sell 2 garri” becomes a priced preview from your catalogue, quantities, unit prices, total. Ambiguous item? It asks which one. No price? It never invents one.</p>
+          </article>
+          <article class="calls-item">
+            <h3 class="t-h3">Nothing final until you confirm</h3>
+            <p class="t-body pale">Every sale, stock receipt and expense sits in “awaiting confirmation” until you tap Confirm. Decline, and nothing was ever written.</p>
+          </article>
+          <article class="calls-item">
+            <h3 class="t-h3">Answers from real records</h3>
+            <p class="t-body pale">“How much did we sell this week?” is answered by backend queries on your saved sales, with the period and caveats stated, like missing cost data.</p>
+          </article>
+          <article class="calls-item">
+            <h3 class="t-h3">Receipts that prove it</h3>
+            <p class="t-body pale">Each committed sale issues a receipt from the saved transaction, your name, logo and totals, exportable as PDF, with an invoice one tap away.</p>
+          </article>
+        </div>
+        <div class="calls-aside">
+          <div class="calls-sticky">
+            <div class="phone" role="img" aria-label="ShopTalk assistant conversation on a phone">
+              <div class="phone-screen">
+                <div class="phone-top">
+                  <p class="phone-who">ShopTalk Assistant</p>
+                  <p class="phone-state"><i></i>Recording live · Ada's Provisions</p>
+                  <span class="phone-end">✓</span>
+                </div>
+                <p class="phone-number">NGN · Africa/Lagos</p>
+                <div class="phone-log">
+                  <p class="caption caption-w"><span class="wave"><i></i><i></i><i></i><i></i></span>Sell 2 garri and 1 rice</p>
+                  <div class="phone-card">
+                    <p class="pc-label">Review · sale, awaiting confirmation</p>
+                    <p class="pc-row"><span>Garri 5kg × 2</span><b>₦15,000</b></p>
+                    <p class="pc-row"><span>Rice 1kg × 1</span><b>₦3,500</b></p>
+                    <p class="pc-row pc-total"><span>Total</span><b>₦18,500</b></p>
+                  </div>
+                  <p class="caption caption-g"><span class="wave"><i></i><i></i><i></i><i></i></span>Confirmed</p>
+                  <p class="phone-note">Sale recorded · Receipt R-000142 · stock updated</p>
+                </div>
+                <p class="phone-saved">✓ Saved to your records</p>
+                <div class="phone-bar"><span>Assistant</span><span>Dashboard</span><span>Catalogue</span><span>Reports</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- TUNE: dark analytics stage -->
+  <section id="tune">
+    <div class="wrap">
+      <div class="tune-stage">
+        <p class="tune-meta"><span><i></i>Live preview · your saved records</span><span>Sales · Expenses · Profit</span></p>
+        <p class="tune-sample">This week<br />₦212,400</p>
+        <div class="tune-body">
+          <div>
+            <h2 class="t-h2 light">See the whole business, clearly.</h2>
+            <p class="t-lead muted">Week over week, month over month, year over year. Every figure is calculated by trusted backend code from your transactions, the assistant explains, it never estimates.</p>
+          </div>
+          <div class="tune-settings">
+            <div class="tune-row"><div><h3 class="t-h3 light">Sales trend</h3><p class="t-body muted">Daily, weekly or monthly buckets</p></div><span class="seg"><span>Week</span><span class="seg-on">Month</span></span></div>
+            <div class="tune-row"><div><h3 class="t-h3 light">Profit honesty</h3><p class="t-body muted">Revenue minus cost of goods; expenses kept separate</p></div><span class="toggle" aria-hidden="true"></span></div>
+            <div class="tune-row"><div><h3 class="t-h3 light">Low-stock watch</h3><p class="t-body muted">Threshold from your business rules</p></div><span class="tag">10 units</span></div>
+            <div class="tune-row"><div><h3 class="t-h3 light">Top products</h3><p class="t-body muted">Best sellers by revenue, per period</p></div><span class="tag">Top 5</span></div>
+          </div>
+        </div>
+        <div class="bars" role="img" aria-label="Bar chart of weekly sales against expenses">
+          <span class="bar b-s" style="--h:52%"></span><span class="bar b-e" style="--h:30%"></span>
+          <span class="bar b-s" style="--h:66%"></span><span class="bar b-e" style="--h:34%"></span>
+          <span class="bar b-s" style="--h:58%"></span><span class="bar b-e" style="--h:38%"></span>
+          <span class="bar b-s" style="--h:80%"></span><span class="bar b-e" style="--h:36%"></span>
+          <span class="bar b-s" style="--h:92%"></span><span class="bar b-e" style="--h:41%"></span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ROOMS: shop scenes -->
+  <section id="rooms">
+    <div class="band band-dark"></div>
+    <div class="wrap rooms-head">
+      <h2 class="t-h2 light">Works at the counter, not just the office.</h2>
+      <p class="t-lead muted">At the counter, around the table, on the phone with a supplier, wherever business is spoken, ShopTalk keeps every transaction on its own line.</p>
+    </div>
+    <div class="rooms-hold">
+      <div class="rooms-stage">
+        <p class="rooms-now"><i></i>Shop mode · two voices</p>
+        <div class="rooms-track">
+          <article class="room room-a">
+            <img class="room-img" src="images/room-counter.jpg" alt="" loading="lazy" />
+            <p class="room-label">At the counter</p>
+            <div class="room-talk"><p class="caption caption-w"><span class="wave"><i></i><i></i><i></i><i></i></span>Two garri, please</p><p class="caption caption-g"><span class="wave"><i></i><i></i><i></i><i></i></span>₦15,000, confirm?</p></div>
+          </article>
+          <article class="room room-b">
+            <img class="room-img" src="images/room-supplier.jpg" alt="" loading="lazy" />
+            <p class="room-label">With a supplier</p>
+            <div class="room-talk"><p class="caption caption-w"><span class="wave"><i></i><i></i><i></i><i></i></span>20 bags arriving Friday</p><p class="caption caption-g"><span class="wave"><i></i><i></i><i></i><i></i></span>Receipt drafted</p></div>
+          </article>
+          <article class="room room-c">
+            <img class="room-img" src="images/room-close.jpg" alt="" loading="lazy" />
+            <p class="room-label">At close of day</p>
+            <div class="room-talk"><p class="caption caption-w"><span class="wave"><i></i><i></i><i></i><i></i></span>What did we make today?</p><p class="caption caption-g"><span class="wave"><i></i><i></i><i></i><i></i></span>₦86,300 · 41 sales</p></div>
+          </article>
+          <article class="room room-d">
+            <img class="room-img" src="images/room-expenses.jpg" alt="" loading="lazy" />
+            <p class="room-label">On expenses</p>
+            <div class="room-talk"><p class="caption caption-w"><span class="wave"><i></i><i></i><i></i><i></i></span>₦5,000 for transport</p><p class="caption caption-g"><span class="wave"><i></i><i></i><i></i><i></i></span>Logged · transport</p></div>
+          </article>
+          <article class="room room-e">
+            <img class="room-img" src="images/room-team.jpg" alt="" loading="lazy" />
+            <p class="room-label">For the team</p>
+            <div class="room-talk"><p class="caption caption-w"><span class="wave"><i></i><i></i><i></i><i></i></span>Who sold the rice?</p><p class="caption caption-g"><span class="wave"><i></i><i></i><i></i><i></i></span>Audit trail has it</p></div>
+          </article>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- VOICES -->
+  <section id="voices">
+    <div class="band band-cream"></div>
+    <div class="wrap">
+      <h2 class="t-h2">Recommended by owners. Loved by the people who run the till.</h2>
+      <div class="voices-grid">
+        <figure class="voices-expert">
+          <div class="expert-photo"><img src="images/expert.jpg" alt="Dr. Amara Osei" loading="lazy" /></div>
+          <blockquote>“I’ve watched shop owners stop dreading their own records. Within weeks they’re asking questions they used to guess at.”</blockquote>
+          <figcaption><b>Dr. Amara Osei</b><br />Small-business advisor</figcaption>
+        </figure>
+        <div class="voices-cards">
+          <figure class="vcard"><p class="stars">★★★★★</p><blockquote>Set up in an evening and I haven’t missed a sale since.</blockquote><figcaption>Marguerite L.</figcaption></figure>
+          <figure class="vcard"><p class="stars">★★★★★</p><blockquote>I recorded my first stock delivery by voice, alone, in years. Small thing, huge feeling.</blockquote><figcaption>Tomás R.</figcaption></figure>
+          <figure class="vcard"><p class="stars">★★★★★</p><blockquote>The captions keep up with my busiest hour, and the totals always match the till.</blockquote><figcaption>Evelyn C.</figcaption></figure>
+          <figure class="vcard"><p class="stars">★★★★★</p><blockquote>My staff sell, my stock boy receives, nobody touches what isn’t theirs. The roles just hold.</blockquote><figcaption>Samuel O.</figcaption></figure>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SETUP -->
+  <section id="setup">
+    <div class="band band-sand"></div>
+    <div class="wrap">
+      <div class="head-grid">
+        <h2 class="t-h2">Three steps, then just talk.</h2>
+        <p class="t-lead muted">No installer visit and no special handset. If you can use a smartphone, you can run your shop on ShopTalk.</p>
+      </div>
+      <ol class="setup-steps">
+        <li><span class="step-n">1</span><div><h3 class="t-h3">Create your account</h3><p class="t-body muted">Register, then tell us about the business, country, currency and timezone are picked for you from all 249 countries, and stay editable.</p><p class="mini-ui">Account created · <b>Free plan active</b></p></div></li>
+        <li><span class="step-n">2</span><div><h3 class="t-h3">Make it yours</h3><p class="t-body muted">Add your logo, brand colour, contact details and catalogue, type them, or import a CSV with preview before anything is written.</p><p class="mini-ui">Ada's Provisions · <b>NGN · Africa/Lagos</b></p></div></li>
+        <li><span class="step-n">3</span><div><h3 class="t-h3">Sell. Confirm. Done.</h3><p class="t-body muted">Say the sale out loud or type it. Review the priced preview, confirm, and the record, receipt and stock update land together.</p><p class="mini-ui">“Sell 2 garri” · <b>Receipt R-000142</b></p></div></li>
+      </ol>
+    </div>
+  </section>
+
+  <!-- FAQ -->
+  <section id="faq">
+    <div class="band band-navy"></div>
+    <div class="wrap faq-grid">
+      <div>
+        <h2 class="t-h2">Questions, answered plainly.</h2>
+        <p class="t-lead muted">Still wondering about something? <a class="link" href="#contact">Ask a person</a>, we reply within a day.</p>
+      </div>
+      <div class="faq-list">
+        <details><summary>Who can use ShopTalk?</summary><p>Retail, service and hybrid small businesses. Onboarding adapts the catalogue and modules to your type.</p></details>
+        <details><summary>Can the assistant record a wrong sale?</summary><p>It cannot save anything alone. Every consequential action is previewed with backend prices and waits for your confirmation; duplicates replay safely.</p></details>
+        <details><summary>How accurate are the figures?</summary><p>Reports are calculated by deterministic backend code from your saved records, totals, stock and profit are never model-generated.</p></details>
+        <details><summary>Which countries and currencies work?</summary><p>All 249 countries with their currencies and IANA timezones, via open ISO data. Change currency any time in Setup.</p></details>
+        <details><summary>Are my records private?</summary><p>Every record is scoped to your business. Other businesses get a 404, and role permissions are enforced on the server for every request.</p></details>
+        <details><summary>Do I need an internet connection?</summary><p>Saving needs a live backend. ShopTalk says so clearly when you are offline instead of failing silently, and typed requests work wherever voice does not.</p></details>
+        <details><summary>Can my team use it?</summary><p>Yes, owner, manager, sales, inventory, finance and viewer roles, each bounded by the backend, with an audit trail of who did what.</p></details>
+      </div>
+    </div>
+  </section>
+
+  <!-- START -->
+  <section id="start">
+    <div class="band band-sand"></div>
+    <div class="wrap start-inner">
+      <div class="start-window">
+        <img src="images/start.jpg" alt="" loading="lazy" />
+      </div>
+      <div class="start-copy">
+        <h2 class="t-h2 light">Your next sale can be the easy one.</h2>
+        <p class="t-lead pale">Free to start. Ready in one sitting on the phone you already own.</p>
+        <div class="hero-actions">
+          <a class="btn" href="http://localhost:3000/login"><span class="btn-label">Get ShopTalk free</span><span class="btn-wave" aria-hidden="true"><i></i><i></i><i></i></span></a>
+          <a class="link light" href="#contact">Talk to our team</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CONTACT -->
+  <section id="contact">
+    <div class="band band-cream"></div>
+    <div class="wrap contact-grid">
+      <div>
+        <h2 class="t-h2">Talk to a person, any way you like.</h2>
+        <p class="t-lead muted">Our support team answers by text, email or inside the app, every day.</p>
+        <figure class="contact-photo"><img src="images/contact.jpg" alt="ShopTalk support team member" loading="lazy" /></figure>
+        <ul class="contact-ways">
+          <li><span>Text us</span><a href="sms:+2340000000000">+234 000 000 0000</a></li>
+          <li><span>Email</span><a href="mailto:help@shoptalk.example">help@shoptalk.example</a></li>
+          <li><span>In the app</span><a href="http://localhost:3000/login">Open the assistant</a></li>
+        </ul>
+      </div>
+      <form class="contact-form" id="contactForm">
+        <h3 class="t-h3">Send us a note</h3>
+        <label>Your name<input type="text" name="name" autocomplete="name" /></label>
+        <label>Email<input type="email" name="email" autocomplete="email" /></label>
+        <label>How can we help?<textarea name="message" rows="4"></textarea></label>
+        <button class="btn" type="submit"><span class="btn-label">Send message</span><span class="btn-wave" aria-hidden="true"><i></i><i></i><i></i></span></button>
+        <p class="form-ok" id="formOk" hidden>Thanks, we reply within a day.</p>
+      </form>
+    </div>
+  </section>
+</main>
+
+<footer id="footer">
+  <div class="wrap">
+    <div class="footer-grid">
+      <div>
+        <a class="footer-brand" href="#hero" aria-label="ShopTalk AI, back to top">
+          <svg viewBox="0 0 36 24" aria-hidden="true"><path d="M2 12c4-7 8-7 12 0s8 7 12 0" fill="none" stroke="#d97706" stroke-width="3" stroke-linecap="round"/><path d="M10 12c4-7 8-7 12 0s8 7 12 0" fill="none" stroke="#faf5f0" stroke-width="3" stroke-linecap="round"/></svg>
+          <span>ShopTalk</span>
+        </a>
+        <h2 class="t-h3 light">Talk to your business. Understand what is happening.</h2>
+        <p class="t-body muted">Made for small shops, by people who have run one.</p>
+        <a class="link light" href="#hero">Back to the top</a>
+      </div>
+      <nav aria-label="Product"><h3>Product</h3><a href="#listen">How it works</a><a href="#calls">Assistant</a><a href="#tune">Analytics</a><a href="#rooms">In the shop</a></nav>
+      <nav aria-label="Support"><h3>Support</h3><a href="mailto:help@shoptalk.example">help@shoptalk.example</a><a href="#contact">Contact us</a><a href="#faq">Questions</a></nav>
+      <nav aria-label="Company"><h3>Company</h3><a href="#voices">Stories</a><a href="#setup">Getting started</a><a href="http://localhost:3000/login">Get the app</a></nav>
+    </div>
+    <p class="footer-giant" aria-hidden="true">ShopTalk</p>
+    <div class="footer-base">
+      <p>© 2026 ShopTalk AI · Design guide: Linea by 8B</p>
+      <p><a href="#hero">Privacy</a> · <a href="#hero">Terms</a></p>
+    </div>
+    <p class="footer-note">Figures shown are from saved business records. ShopTalk never claims a transaction succeeded unless the backend confirms it.</p>
+  </div>
+</footer>
+
+<script src="vendor/gsap.min.js"></script>
+<script src="vendor/ScrollTrigger.min.js"></script>
+<script src="vendor/lenis.min.js"></script>
+<script src="script.js"></script>
+</body>
+</html>
+
