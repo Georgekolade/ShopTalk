@@ -74,6 +74,9 @@ services:
         # Must stay empty: browser calls same-origin /api/* and the Next.js
         # server rewrites to the backend over the internal network.
         NEXT_PUBLIC_API_URL: ""
+        # Build-time only: next.config.ts rewrites bake into the image.
+        # Keep in sync with BACKEND_INTERNAL_URL below. Change needs rebuild.
+        BACKEND_INTERNAL_URL: http://backend:8000
     restart: unless-stopped
     environment:
       BACKEND_INTERNAL_URL: http://backend:8000

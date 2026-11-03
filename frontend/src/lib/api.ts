@@ -2,8 +2,10 @@
 
 import { ApiError, ApiErrorEnvelope } from "./types";
 
-export const API_BASE =
-  process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
+// Empty = same-origin /api/*, rewritten server-side to the backend.
+// Never fall back to 127.0.0.1: in production that is the visitor's own
+// machine, not the backend, and every auth call fails.
+export const API_BASE = process.env.NEXT_PUBLIC_API_URL || "";
 
 const TOKEN_KEY = "shoptalk.token";
 const BUSINESS_KEY = "shoptalk.businessId";
