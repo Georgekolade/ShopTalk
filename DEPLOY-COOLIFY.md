@@ -1,6 +1,6 @@
 # Deploying ShopTalk on Coolify
 
-Stack: Postgres 16 -> Django/Gunicorn (port 8003, internal) -> Next.js (port 3003, public).
+Stack: Postgres 16 -> Django/Gunicorn (port 8000, internal) -> Next.js (port 3003, public).
 The browser only ever talks to the frontend origin. `/api/*` is rewritten
 server-side to the backend, so there is no CORS and no public API port.
 
@@ -45,4 +45,4 @@ docker compose up --build
 
 Then open http://localhost:3003 (the local-only docker-compose.override.yml publishes the port; Coolify ignores that file). API health: the backend answers
 `/api/health/` internally; check with
-`docker compose exec backend curl -s http://127.0.0.1:8003/api/health/`.
+`docker compose exec backend curl -s http://127.0.0.1:8000/api/health/`.

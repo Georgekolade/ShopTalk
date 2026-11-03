@@ -3,7 +3,7 @@
 import { ApiError, ApiErrorEnvelope } from "./types";
 
 export const API_BASE =
-  process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8003";
+  process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
 
 const TOKEN_KEY = "shoptalk.token";
 const BUSINESS_KEY = "shoptalk.businessId";
@@ -143,7 +143,7 @@ function parseJsonBody(text: string, status: number): unknown {
           : "Server returned an unreadable response.",
         field: null,
         next_step:
-          "The ShopTalk backend did not answer properly. Check that the backend service is running (port 8003), then retry.",
+          "The ShopTalk backend did not answer properly. Check that the backend service is running (port 8000), then retry.",
       },
     });
   }

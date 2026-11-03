@@ -29,7 +29,7 @@ python -m venv .venv
 pip install -r requirements.txt
 python manage.py migrate
 python manage.py seed_demo      # demo login: demo / demo1234
-python manage.py runserver 8003  # http://127.0.0.1:8003
+python manage.py runserver      # http://127.0.0.1:8000
 ```
 
 ```powershell
