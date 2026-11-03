@@ -3,7 +3,7 @@
 import { ApiError, ApiErrorEnvelope } from "./types";
 
 export const API_BASE =
-  process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
+  process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8003";
 
 const TOKEN_KEY = "shoptalk.token";
 const BUSINESS_KEY = "shoptalk.businessId";
@@ -120,7 +120,9 @@ function networkError(): ApiError {
       code: "network",
       message: "Cannot reach the ShopTalk server.",
       field: null,
-      next_step: `Start the backend, then retry. Expected at ${API_BASE}.`,
+      next_step: API_BASE
+        ? `Start the backend, then retry. Expected at ${API_BASE}.`
+        : "Check that the ShopTalk services are running, then retry.",
     },
   });
 }
@@ -141,7 +143,7 @@ function parseJsonBody(text: string, status: number): unknown {
           : "Server returned an unreadable response.",
         field: null,
         next_step:
-          "Restart the frontend dev server, make sure the backend runs on port 8000, then retry.",
+          "The ShopTalk backend did not answer properly. Check that the backend service is running (port 8003), then retry.",
       },
     });
   }
