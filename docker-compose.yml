@@ -1,7 +1,7 @@
 # ShopTalk AI — production stack for Coolify (or any Docker host).
 # Services: db (Postgres) -> backend (Django/Gunicorn) -> frontend (Next.js)
 # In Coolify: create a Docker Compose resource from this repo, set the
-# variables from .env.example, and assign your domain to `frontend` (port 3000).
+# variables from .env.example, and assign your domain to `frontend` (port 3003).
 
 services:
   db:
@@ -78,9 +78,9 @@ services:
     environment:
       BACKEND_INTERNAL_URL: http://backend:8000
     # No host port: Coolify's proxy routes the domain to this container
-    # port. Publishing 3000 on the host collides with other services.
+    # port. Publishing a host port collides with other services on the host.
     expose:
-      - "3000"
+      - "3003"
     depends_on:
       backend:
         condition: service_healthy
