@@ -1,6 +1,7 @@
 """ShopTalk API routes."""
 
 from django.contrib import admin
+from django.http import JsonResponse
 from django.urls import path
 from rest_framework.authtoken.views import obtain_auth_token
 
@@ -16,7 +17,12 @@ catalogue_detail = views.CatalogueViewSet.as_view(
     }
 )
 
+def health(_request):
+    return JsonResponse({"status": "ok"})
+
+
 urlpatterns = [
+    path('api/health/', health, name='api-health'),
     path('admin/', admin.site.urls),
     path('api/auth/token/', obtain_auth_token, name='api-token'),
     path('api/auth/register/', views_extra.RegisterView.as_view(), name='api-register'),

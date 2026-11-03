@@ -1,0 +1,102 @@
+# ShopTalk AI — production stack for Coolify (or any Docker host).
+# Services: db (Postgres) -> backend (Django/Gunicorn) -> frontend (Next.js)
+# In Coolify: create a Docker Compose resource from this repo, set the
+# variables from .env.example, and assign your domain to `frontend` (port 3000).
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME:-shoptalk}
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in the environment}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres} -d ${DB_NAME:-shoptalk}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - internal
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  backend:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    environment:
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?Set DJANGO_SECRET_KEY in the environment}
+      DJANGO_DEBUG: "False"
+      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-*}
+      DB_NAME: ${DB_NAME:-shoptalk}
+      DB_USER: ${DB_USER:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in the environment}
+      DB_HOST: db
+      DB_PORT: "5432"
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-}
+      CSRF_TRUSTED_ORIGINS: ${CSRF_TRUSTED_ORIGINS:-}
+      SHOP_TALK_AI_PROVIDER: ${SHOP_TALK_AI_PROVIDER:-heuristic}
+      SHOP_TALK_AI_API_KEY: ${SHOP_TALK_AI_API_KEY:-}
+      SHOP_TALK_AI_BASE_URL: ${SHOP_TALK_AI_BASE_URL:-}
+      SHOP_TALK_AI_MODEL: ${SHOP_TALK_AI_MODEL:-}
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8000/api/health/ || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+    networks:
+      - internal
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        # Must stay empty: browser calls same-origin /api/* and the Next.js
+        # server rewrites to the backend over the internal network.
+        NEXT_PUBLIC_API_URL: ""
+    restart: unless-stopped
+    environment:
+      BACKEND_INTERNAL_URL: http://backend:8000
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - internal
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+
+volumes:
+  pgdata:
+
+networks:
+  internal:
+    driver: bridge

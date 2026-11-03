@@ -10,6 +10,7 @@
 # Docs and binaries: ignore all Markdown except README, and all PDFs
 *.md
 !README.md
+!DEPLOY-COOLIFY.md
 *.pdf
 
 # Secrets and environment
