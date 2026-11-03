@@ -34,6 +34,11 @@ ALLOWED_HOSTS = [
     ).split(',')
     if host.strip()
 ]
+# Loopback is always allowed so container healthchecks (127.0.0.1) pass
+# regardless of the public hosts configured for production.
+for _loopback in ('localhost', '127.0.0.1'):
+    if _loopback not in ALLOWED_HOSTS:
+        ALLOWED_HOSTS.append(_loopback)
 
 
 # Application definition
