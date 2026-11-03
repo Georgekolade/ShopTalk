@@ -2,7 +2,7 @@ import type { NextConfig } from "next";
 
 // Server-side only: where this Next.js server reaches the Django API.
 // Browser calls stay same-origin (/api/*) and are rewritten below.
-// Local dev: http://127.0.0.1:8000. Docker/Coolify: http://backend:8000.
+// Local dev: http://127.0.0.1:8000. Docker/Coolify: http://backend:8003.
 const backendInternalUrl =
   process.env.BACKEND_INTERNAL_URL ?? "http://127.0.0.1:8000";
 
