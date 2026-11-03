@@ -1,0 +1,6 @@
+# Local development only. Docker Compose loads this automatically next to
+# docker-compose.yml; Coolify does not, so production has no host ports.
+services:
+  frontend:
+    ports:
+      - "3000:3000"

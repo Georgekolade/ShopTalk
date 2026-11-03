@@ -77,8 +77,10 @@ services:
     restart: unless-stopped
     environment:
       BACKEND_INTERNAL_URL: http://backend:8000
-    ports:
-      - "${FRONTEND_PORT:-3000}:3000"
+    # No host port: Coolify's proxy routes the domain to this container
+    # port. Publishing 3000 on the host collides with other services.
+    expose:
+      - "3000"
     depends_on:
       backend:
         condition: service_healthy

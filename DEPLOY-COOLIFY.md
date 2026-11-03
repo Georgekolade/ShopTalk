@@ -43,6 +43,6 @@ cp .env.example .env   # fill in the two secrets
 docker compose up --build
 ```
 
-Then open http://localhost:3000. API health: the backend answers
+Then open http://localhost:3000 (the local-only docker-compose.override.yml publishes the port; Coolify ignores that file). API health: the backend answers
 `/api/health/` internally; check with
 `docker compose exec backend curl -s http://127.0.0.1:8000/api/health/`.
