@@ -47,7 +47,6 @@ services:
       SHOP_TALK_AI_BASE_URL: ${SHOP_TALK_AI_BASE_URL:-}
       SHOP_TALK_AI_MODEL: ${SHOP_TALK_AI_MODEL:-}
       SHOP_TALK_AI_TRANSCRIBE_MODEL: ${SHOP_TALK_AI_TRANSCRIBE_MODEL:-}
-      VOSK_MODEL_PATH: ${VOSK_MODEL_PATH:-/app/core/models/vosk-model-en-us-0.22}
     depends_on:
       db:
         condition: service_healthy
@@ -67,8 +66,7 @@ services:
     deploy:
       resources:
         limits:
-          # Large Vosk model (~1.8GB on disk, ~1GB+ RAM per worker x2): keep headroom.
-          memory: 4G
+          memory: 1G
 
   frontend:
     build:

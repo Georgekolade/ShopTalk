@@ -13,8 +13,8 @@ so the frontend can say so. Engine failures surface as
 ``ProviderError`` so the view answers 503
 ``transcription-unavailable`` instead of leaking details.
 
-ACTIVE ENGINE: local Vosk large model (offline, no API key, no
-network round trip). The 16 kHz mono WAV is decoded with the stdlib ``wave`` module
+ACTIVE ENGINE: local Vosk (offline, no API key, no network round
+trip). The 16 kHz mono WAV is decoded with the stdlib ``wave`` module
 and fed to Vosk's ``KaldiRecognizer``; the reply ``text`` is returned
 as-is. Anything else is converted (mono downmix, linear resample).
 
@@ -41,24 +41,13 @@ MAX_AUDIO_BYTES = 25 * 1024 * 1024
 VOSK_SAMPLE_RATE = 16000
 
 
-VOSK_DEFAULT_MODEL = 'vosk-model-en-us-0.22'
-VOSK_LEGACY_MODEL = 'vosk-model-small-en-us-0.15'
-VOSK_MODEL_URL = 'https://alphacephei.com/vosk/models/vosk-model-en-us-0.22.zip'
-
-
 def _model_dir():
     """Vosk model directory: ``VOSK_MODEL_PATH`` or the bundled default."""
     override = os.environ.get('VOSK_MODEL_PATH', '').strip()
     if override:
         return override
     here = os.path.dirname(os.path.abspath(__file__))
-    default = os.path.join(here, 'models', VOSK_DEFAULT_MODEL)
-    if os.path.isdir(default):
-        return default
-    legacy = os.path.join(here, 'models', VOSK_LEGACY_MODEL)
-    if os.path.isdir(legacy):
-        return legacy
-    return default
+    return os.path.join(here, 'models', 'vosk-model-small-en-us-0.15')
 
 
 _VOSK_MODEL = None
