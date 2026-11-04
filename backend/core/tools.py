@@ -273,6 +273,85 @@ def add_catalogue_item_tool(*, business, user, name, selling_price, kind='produc
     }
 
 
+def _catalogue_decimal(value, field):
+    try:
+        number = Decimal(str(value))
+    except (InvalidOperation, ValueError, TypeError):
+        raise ValidationError({field: 'Must be a number.'})
+    if number < 0:
+        raise ValidationError({field: 'Must be zero or more.'})
+    return number
+
+
+def _coerce_bool(value):
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in ('true', '1', 'yes')
+
+
+def edit_catalogue_item_tool(*, business, user, product_id, name=None, selling_price=None,
+                             cost_price=None, kind=None, stock_tracked=None, aliases=None):
+    """Change one catalogue item. Owner, manager, or inventory staff."""
+    _require(business, user, 'catalogue.write',
+             'Your role cannot manage the catalogue. Ask an owner, manager, or inventory staff.')
+    try:
+        product = ProductService.objects.get(pk=product_id, business=business)
+    except (ProductService.DoesNotExist, ValueError, TypeError):
+        raise ValidationError({'product': 'Unknown item.'})
+    updates = {}
+    if name is not None and str(name).strip():
+        new_name = str(name).strip()
+        if (new_name.lower() != product.name.lower()
+                and ProductService.objects.filter(business=business, name__iexact=new_name).exists()):
+            raise ValidationError({'name': f'"{new_name}" is already in the catalogue.'})
+        updates['name'] = new_name
+    if selling_price is not None and str(selling_price).strip() != '':
+        updates['selling_price'] = _catalogue_decimal(selling_price, 'selling_price')
+    if cost_price is not None and str(cost_price).strip() != '':
+        updates['cost_price'] = _catalogue_decimal(cost_price, 'cost_price')
+    if kind is not None and str(kind).strip() != '':
+        clean_kind = str(kind).strip().lower()
+        if clean_kind not in ('product', 'service'):
+            raise ValidationError({'kind': 'Must be product or service.'})
+        updates['kind'] = clean_kind
+    if stock_tracked is not None and str(stock_tracked).strip() != '':
+        updates['stock_tracked'] = _coerce_bool(stock_tracked)
+    if aliases is not None:
+        clean_aliases = []
+        for alias in aliases:
+            alias = str(alias).strip()
+            if alias and alias not in clean_aliases:
+                clean_aliases.append(alias)
+        updates['aliases'] = clean_aliases
+    if not updates:
+        raise ValidationError({'change': 'Nothing to change.'})
+    for field, value in updates.items():
+        setattr(product, field, value)
+    product.save()
+    return {
+        'product_id': product.pk,
+        'name': product.name,
+        'kind': product.kind,
+        'selling_price': str(product.selling_price),
+        'updated': sorted(updates),
+    }
+
+
+def deactivate_catalogue_item_tool(*, business, user, product_id):
+    """Take one catalogue item off sale. History is kept. Owner, manager, or inventory staff."""
+    _require(business, user, 'catalogue.write',
+             'Your role cannot manage the catalogue. Ask an owner, manager, or inventory staff.')
+    try:
+        product = ProductService.objects.get(pk=product_id, business=business)
+    except (ProductService.DoesNotExist, ValueError, TypeError):
+        raise ValidationError({'product': 'Unknown item.'})
+    if not product.active:
+        raise ValidationError({'product': f'"{product.name}" is already inactive.'})
+    product.active = False
+    product.save(update_fields=['active', 'updated_at'])
+    return {'product_id': product.pk, 'name': product.name, 'active': False}
+
+
 def search_knowledge_tool(*, business, user, query):
     """Search owner-taught documents for this business only."""
     from .knowledge import search_documents
@@ -457,6 +536,8 @@ _TOOLS = {
     'receive_stock': receive_stock_tool,
     'record_expense': record_expense_tool,
     'add_catalogue_item': add_catalogue_item_tool,
+    'edit_catalogue_item': edit_catalogue_item_tool,
+    'deactivate_catalogue_item': deactivate_catalogue_item_tool,
     'get_business_report': get_business_report_tool,
     'get_sale_documents': get_sale_documents_tool,
     'get_sales_trend': get_sales_trend_tool,
@@ -467,7 +548,7 @@ READ_TOOLS = frozenset(
     {'get_business_context', 'search_products', 'check_stock', 'get_business_report',
      'get_sale_documents', 'get_sales_trend', 'search_knowledge'}
 )
-WRITE_INTENTS = frozenset({'prepare_sale', 'receive_stock', 'record_expense', 'add_catalogue_item'})
+WRITE_INTENTS = frozenset({'prepare_sale', 'receive_stock', 'record_expense', 'add_catalogue_item', 'edit_catalogue_item', 'deactivate_catalogue_item'})
 
 
 def execute_tool(*, business, user, name, args):

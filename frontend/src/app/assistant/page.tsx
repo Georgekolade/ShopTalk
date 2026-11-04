@@ -206,6 +206,7 @@ function ApprovalCard({
     selling_price?: string;
     cost_price?: string | null;
     stock_tracked?: boolean;
+    changes?: { label: string; from: string; to: string }[];
   };
   return (
     <div className="mt-3 overflow-hidden rounded-xl border border-amber-300 bg-amber-50">
@@ -251,6 +252,16 @@ function ApprovalCard({
                 <dd className="font-medium text-zinc-900">Tracked</dd>
               </div>
             ) : null}
+          </dl>
+        ) : null}
+        {!payload.lines && payload.changes ? (
+          <dl className="mt-2 space-y-1 border-t border-amber-200 pt-2 text-sm">
+            {payload.changes.map((change, index) => (
+              <div key={index} className="flex justify-between gap-3">
+                <dt className="text-zinc-700">{change.label}</dt>
+                <dd className="font-medium tabular-nums text-zinc-900">{change.from} → {change.to}</dd>
+              </div>
+            ))}
           </dl>
         ) : null}
         <div className="mt-3 flex flex-col gap-2 sm:flex-row">

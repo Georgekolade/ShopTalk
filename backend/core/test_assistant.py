@@ -374,6 +374,47 @@ class CatalogueFlowTests(AssistantCase):
         self.assertEqual(ProductService.objects.filter(name='Zobo').count(), 0)
 
 
+class CatalogueEditFlowTests(AssistantCase):
+    def test_price_edit_preview_then_confirm(self):
+        first = self.ask('change the price of garri to 6000')
+        self.assertEqual(first.data['state'], 'awaiting_confirmation')
+        self.assertEqual(ProductService.objects.get(name='Garri 5kg').selling_price, Decimal('2500.00'))
+        response = self.confirm(first.data['action']['id'])
+        self.assertEqual(response.data['state'], 'completed')
+        self.assertEqual(ProductService.objects.get(name='Garri 5kg').selling_price, Decimal('6000'))
+
+    def test_decline_keeps_old_price(self):
+        first = self.ask('change the price of garri to 6000')
+        response = self.confirm(first.data['action']['id'], confirm=False)
+        self.assertIn('Cancelled', response.data['reply'])
+        self.assertEqual(ProductService.objects.get(name='Garri 5kg').selling_price, Decimal('2500.00'))
+
+    def test_rename_blocked_on_duplicate(self):
+        make_product(self.shop, name='Garri 1kg', price='600.00', stock='5')
+        response = self.ask('rename garri 5kg to garri 1kg')
+        self.assertIn('already in the catalogue', response.data['reply'])
+        self.assertIsNone(response.data['action'])
+
+    def test_deactivate_preview_then_confirm(self):
+        first = self.ask('deactivate garri 5kg')
+        self.assertEqual(first.data['state'], 'awaiting_confirmation')
+        response = self.confirm(first.data['action']['id'])
+        self.assertEqual(response.data['state'], 'completed')
+        self.assertFalse(ProductService.objects.get(name='Garri 5kg').active)
+
+    def test_unknown_item_asks(self):
+        response = self.ask('change the price of moonrock to 500')
+        self.assertIn('do not know', response.data['reply'])
+        self.assertIsNone(response.data['action'])
+
+    def test_staff_edit_denied_at_confirm(self):
+        self.client.force_authenticate(self.staff)
+        first = self.ask('change the price of garri to 6000')
+        response = self.confirm(first.data['action']['id'])
+        self.assertEqual(response.data['state'], 'failed')
+        self.assertEqual(ProductService.objects.get(name='Garri 5kg').selling_price, Decimal('2500.00'))
+
+
 class StockReceiptFlowTests(AssistantCase):
     def test_receipt_preview_then_confirm(self):
         first = self.ask('we received 5 garri')

@@ -37,6 +37,40 @@ class CatalogueParsingTests(SimpleTestCase):
         self.assertEqual(p.write_intent, '')
         self.assertTrue(p.clarify)
 
+
+class CatalogueEditParsingTests(SimpleTestCase):
+    def test_change_price(self):
+        p = plan('change the price of garri to 6000')
+        self.assertEqual(p.write_intent, 'edit_catalogue_item')
+        self.assertEqual(p.write_args['name'], 'garri')
+        self.assertEqual(p.write_args['selling_price'], '6000')
+
+    def test_change_cost(self):
+        p = plan('change the cost of garri to 1800')
+        self.assertEqual(p.write_intent, 'edit_catalogue_item')
+        self.assertEqual(p.write_args['cost_price'], '1800')
+
+    def test_rename(self):
+        p = plan('rename garri to garri 5kg')
+        self.assertEqual(p.write_intent, 'edit_catalogue_item')
+        self.assertEqual(p.write_args['name'], 'garri')
+        self.assertEqual(p.write_args['new_name'], 'garri 5kg')
+
+    def test_missing_price_asks(self):
+        p = plan('change the price of garri')
+        self.assertEqual(p.write_intent, '')
+        self.assertTrue(p.clarify)
+
+    def test_deactivate(self):
+        p = plan('deactivate zobo')
+        self.assertEqual(p.write_intent, 'deactivate_catalogue_item')
+        self.assertEqual(p.write_args['name'], 'zobo')
+
+    def test_remove_from_catalogue_deactivates(self):
+        p = plan('remove zobo from the catalogue')
+        self.assertEqual(p.write_intent, 'deactivate_catalogue_item')
+        self.assertEqual(p.write_args['name'], 'zobo')
+
     def test_stock_add_is_not_catalogue(self):
         self.assertEqual(plan('add 10 garri to stock').write_intent, 'receive_stock')
 

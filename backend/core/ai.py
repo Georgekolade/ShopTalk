@@ -167,6 +167,9 @@ class HeuristicProvider(BaseProvider):
                 return Plan(message='Nothing is waiting for confirmation right now.')
             if self._is_negative(lowered, loose=False):
                 return Plan(message='Nothing is waiting for confirmation right now.')
+        catalogue = self._catalogue_edit_plan(lowered, raw=text)
+        if catalogue is not None:
+            return catalogue
         catalogue = self._catalogue_plan(lowered, text)
         if catalogue is not None:
             return catalogue
@@ -241,6 +244,69 @@ class HeuristicProvider(BaseProvider):
         if re.search(r'\b(sell|sold|received|restock|spent)\b\s+\d', lowered):
             return None
         return Plan(tool_calls=[ToolCall('search_knowledge', {'query': raw})])
+
+    def _catalogue_edit_plan(self, lowered, raw):
+        """'change the price of <name> to <amount>', 'rename <name> to <other>',
+        'deactivate <name>', 'remove <name> from the catalogue' (deactivates:
+        history is kept, the item just cannot be sold). Runs before the
+        add-to-catalogue parser so 'remove from catalogue' never becomes
+        a price question."""
+        if 'deactivate' in lowered or 'disable' in lowered or (
+                'remove' in lowered and 'catalog' in lowered) or (
+                'delete' in lowered and 'catalog' in lowered):
+            marker = re.search(r'deactivate|disable|remove|delete', lowered)
+            name = raw[marker.end():] if marker else raw
+            name = re.sub(r'\b(from the catalogue|from catalogue|catalogue|catalog|product|service|item)\b\.?\s*$', '', name, flags=re.IGNORECASE)
+            name = ' '.join(name.split()).strip(' ?.')
+            if not name:
+                return Plan(clarify='Which item should I deactivate?')
+            return Plan(
+                write_intent='deactivate_catalogue_item',
+                write_args={'name': name},
+            )
+        rename = re.search(r'\brename\b', lowered)
+        price_words = ('price of', 'price for', 'price', 'cost of', 'cost')
+        if rename is None and not any(w in lowered for w in ('change', 'set', 'update')):
+            return None
+        if rename is not None:
+            tail = raw[rename.end():]
+            parts = re.split(r'\bto\b', tail, maxsplit=1, flags=re.IGNORECASE)
+            if len(parts) != 2:
+                return Plan(clarify='Rename what to what? Say "rename garri to garri 5kg".')
+            old, new = ' '.join(parts[0].split()).strip(' ?.'), ' '.join(parts[1].split()).strip(' ?.')
+            if not old or not new:
+                return Plan(clarify='Rename what to what? Say "rename garri to garri 5kg".')
+            return Plan(
+                write_intent='edit_catalogue_item',
+                write_args={'name': old, 'new_name': new},
+            )
+        if not any(w in lowered for w in price_words):
+            return None
+        amounts = AMOUNT_RE.findall(raw.replace(',', ''))
+        if not amounts:
+            return Plan(clarify='What should the new price be? Say "change the price of garri to 6000".')
+        price = amounts[-1]
+        name = lowered
+        for marker in ('change the price of', 'change price of', 'change the price for',
+                       'change price for', 'change the cost of', 'change cost of',
+                       'set the price of', 'set price of', 'update the price of',
+                       'update price of', 'change', 'set', 'update'):
+            if marker in name:
+                name = name.split(marker, 1)[1]
+                break
+        name = name.replace(price, ' ')
+        for tail in ('the price of', 'price of', 'the price for', 'price for',
+                     'the price', 'price', 'the cost of', 'cost of', 'the cost', 'cost'):
+            name = name.replace(tail, ' ')
+        name = ' '.join(name.split()).strip(' ?.')
+        name = re.sub(r'\bto$', '', name).strip()
+        if not name:
+            return Plan(clarify='Which item should change price? Say "change the price of garri to 6000".')
+        field = 'cost_price' if 'cost' in lowered else 'selling_price'
+        return Plan(
+            write_intent='edit_catalogue_item',
+            write_args={'name': name, field: price},
+        )
 
     def _catalogue_plan(self, lowered, raw):
         """'add <name> <price> to catalogue' or 'new product|service <name> <price>'.
@@ -506,6 +572,8 @@ class LLMProvider:
         'Examples:\n'
         '- "sold 2 garri and 1 rice" -> propose_sale with those lines.\n'
         '- "add zobo 1500 to the catalogue" -> propose_product with that name and price.\n'
+        '- "change the price of garri to 6000" -> propose_product_edit with that name and price.\n'
+        '- "remove zobo from the catalogue" -> propose_product_deactivate (deactivates; history is kept).\n'
         '- "how much rice left?" -> search_products, then check_stock.\n'
         '- "sell am" (no item) -> ask_question: which item and how many?\n'
         '- "yes" while one action awaits confirmation -> confirm_pending.\n'
@@ -537,6 +605,10 @@ class LLMProvider:
          'args': {'amount': 'string', 'category': 'string', 'description?': 'string', 'day?': 'YYYY-MM-DD'}},
         {'name': 'propose_product', 'description': 'Propose adding one catalogue item for human confirmation.',
          'args': {'name': 'string', 'selling_price': 'string', 'kind?': 'product | service', 'cost_price?': 'string'}},
+        {'name': 'propose_product_edit', 'description': 'Propose changing a catalogue item (price, cost, rename) for human confirmation. Never invent the current values.',
+         'args': {'name': 'string', 'new_name?': 'string', 'selling_price?': 'string', 'cost_price?': 'string'}},
+        {'name': 'propose_product_deactivate', 'description': 'Propose taking a catalogue item off sale for human confirmation. History is kept.',
+         'args': {'name': 'string'}},
         {'name': 'confirm_pending', 'description': 'Confirm the awaiting action. Omit pending_action_id when exactly one waits.',
          'args': {'pending_action_id?': 'integer'}},
         {'name': 'cancel_pending', 'description': 'Decline the awaiting action.',
@@ -681,6 +753,14 @@ class LLMProvider:
             elif name == 'propose_product':
                 write_intent, write_args = 'add_catalogue_item', {
                     k: args.get(k, '') for k in ('name', 'selling_price', 'kind', 'cost_price')
+                }
+            elif name == 'propose_product_edit':
+                write_intent, write_args = 'edit_catalogue_item', {
+                    k: args.get(k, '') for k in ('name', 'new_name', 'selling_price', 'cost_price')
+                }
+            elif name == 'propose_product_deactivate':
+                write_intent, write_args = 'deactivate_catalogue_item', {
+                    'name': args.get('name', ''),
                 }
             elif name == 'confirm_pending':
                 write_intent = 'confirm_pending'

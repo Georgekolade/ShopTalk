@@ -339,6 +339,30 @@ def _resolve_lines(*, business, user, lines):
     return resolved, ''
 
 
+def _resolve_product(*, business, name):
+    """Match one catalogue name to a product. Ambiguous or unknown -> clarify."""
+    query = (name or '').strip()
+    if not query:
+        return None, 'Which item do you mean?'
+    result = execute_tool(
+        business=business, user=None, name='search_products', args={'query': query}
+    )
+    matches = result['matches']
+    if not matches:
+        return None, f'I do not know "{query}". Check the name or add it to the catalogue first.'
+    exact = [m for m in matches if m['name'].lower() == query.lower()]
+    if len(exact) == 1:
+        return exact[0], ''
+    if len(matches) == 1 and not exact:
+        return matches[0], ''
+    lowered = [m['name'].lower() for m in matches]
+    close = difflib.get_close_matches(query.lower(), lowered, n=1, cutoff=0.8)
+    if close:
+        return matches[lowered.index(close[0])], ''
+    options = ', '.join(f"{m['name']} ({m['selling_price']})" for m in matches[:5])
+    return None, f'"{query}" matches more than one item: {options}. Which one?'
+
+
 def _preview_action(*, business, user, conversation, action_type, payload, summary,
                    record_type='', record_ref='', key=None):
     action = PendingAction.objects.create(
@@ -606,6 +630,14 @@ def _run_plan(plan, *, business, user, conversation, context, tool_runs, request
         return _prepare_catalogue_flow(
             business, user, conversation, plan.write_args, tool_runs, request_id
         )
+    if plan.write_intent == 'edit_catalogue_item':
+        return _prepare_catalogue_edit_flow(
+            business, user, conversation, plan.write_args, tool_runs, request_id
+        )
+    if plan.write_intent == 'deactivate_catalogue_item':
+        return _prepare_catalogue_deactivate_flow(
+            business, user, conversation, plan.write_args, tool_runs, request_id
+        )
     if plan.write_intent:
         return 'I cannot do that yet through chat.', None
     return plan.message or 'Anything else?', None
@@ -830,6 +862,59 @@ def _prepare_catalogue_flow(business, user, conversation, args, tool_runs, reque
     return f'{summary} Confirm to add it, or say no to cancel.', action
 
 
+def _prepare_catalogue_edit_flow(business, user, conversation, args, tool_runs, request_id):
+    product, problem = _resolve_product(business=business, name=args.get('name'))
+    if product is None:
+        return problem, None
+    updates = {}
+    changes = []
+    if args.get('new_name'):
+        new_name = str(args['new_name']).strip()
+        if new_name and new_name.lower() != product['name'].lower():
+            if ProductService.objects.filter(business=business, name__iexact=new_name).exists():
+                return f'"{new_name}" is already in the catalogue.', None
+            updates['name'] = new_name
+            changes.append({'label': 'Name', 'from': product['name'], 'to': new_name})
+    for field, label in (('selling_price', 'Selling price'), ('cost_price', 'Cost price')):
+        raw = args.get(field)
+        if raw is not None and str(raw).strip() != '':
+            try:
+                value = Decimal(str(raw))
+            except (InvalidOperation, ValueError, TypeError):
+                return f'What price should "{product["name"]}" sell for?', None
+            if value < 0:
+                return 'Prices cannot be negative.', None
+            if str(value) != str(product.get(field) or ''):
+                updates[field] = str(value)
+                changes.append({'label': label, 'from': str(product.get(field) or '—'), 'to': str(value)})
+    if not updates:
+        return f'What should change on "{product["name"]}"? Say "change the price of garri to 6000".', None
+    summary = f"Update {product['name']}: " + '; '.join(f"{c['label']} {c['from']} → {c['to']}" for c in changes) + '.'
+    action = _preview_action(
+        business=business, user=user, conversation=conversation,
+        action_type=PendingAction.TYPE_CATALOGUE_EDIT,
+        payload={'product_id': product['product_id'], 'name': product['name'],
+                 'updates': updates, 'changes': changes},
+        summary=summary, key=uuid.uuid4().hex,
+    )
+    return f'{summary} Confirm to save it, or say no to cancel.', action
+
+
+def _prepare_catalogue_deactivate_flow(business, user, conversation, args, tool_runs, request_id):
+    product, problem = _resolve_product(business=business, name=args.get('name'))
+    if product is None:
+        return problem, None
+    summary = f'Deactivate {product["name"]}: it stays in history but can no longer be sold.'
+    action = _preview_action(
+        business=business, user=user, conversation=conversation,
+        action_type=PendingAction.TYPE_CATALOGUE_DEACTIVATE,
+        payload={'product_id': product['product_id'], 'name': product['name'],
+                 'changes': [{'label': 'Status', 'from': 'active', 'to': 'inactive'}]},
+        summary=summary, key=uuid.uuid4().hex,
+    )
+    return f'{summary} Confirm to deactivate it, or say no to cancel.', action
+
+
 def _confirm_from_chat(business, user, action_id, confirm):
     result = confirm_action(business=business, user=user, action_id=action_id,
                             confirm=confirm)
@@ -1017,5 +1102,32 @@ def _execute_confirmed(*, business, user, action):
             f"Added to the catalogue: {result['name']} "
             f"at {_money(result['selling_price'], business.currency)}."
         )
+        return reply, None
+    if action.action_type == PendingAction.TYPE_CATALOGUE_EDIT:
+        payload = action.payload
+        result = execute_tool(
+            business=business, user=user, name='edit_catalogue_item', args={
+                'product_id': payload['product_id'], 'name': payload.get('updates', {}).get('name'),
+                'selling_price': payload.get('updates', {}).get('selling_price'),
+                'cost_price': payload.get('updates', {}).get('cost_price'),
+            },
+        )
+        action.record_type = 'ProductService'
+        action.record_ref = str(result['product_id'])
+        action.save(update_fields=['record_type', 'record_ref'])
+        reply = f"Updated {result['name']}: " + '; '.join(
+            f"{c['label']} is now {c['to']}" for c in payload.get('changes', [])
+        ) + '.'
+        return reply, None
+    if action.action_type == PendingAction.TYPE_CATALOGUE_DEACTIVATE:
+        payload = action.payload
+        result = execute_tool(
+            business=business, user=user, name='deactivate_catalogue_item',
+            args={'product_id': payload['product_id']},
+        )
+        action.record_type = 'ProductService'
+        action.record_ref = str(result['product_id'])
+        action.save(update_fields=['record_type', 'record_ref'])
+        reply = f"{result['name']} is now inactive. It stays in history but can no longer be sold."
         return reply, None
     raise ValidationError({'action_type': 'Unknown prepared action.'})
