@@ -21,9 +21,12 @@ import {
   Menu,
   MessagesSquare,
   Package,
+  PackagePlus,
   Search,
   Settings2,
+  ShoppingCart,
   Users,
+  Wallet,
   X,
 } from "lucide-react";
 import { api, biz, getBusinessId, getToken, logout, rememberBusiness, setBusinessId } from "../lib/api";
@@ -32,7 +35,9 @@ import { FloatingMic } from "./floating-mic";
 import { InstallPrompt } from "./install-prompt";
 import { can } from "../lib/permissions";
 
-type NavLink = { href: string; label: string; Icon: typeof LayoutDashboard; permission?: string; ownerOnly?: boolean; hideFor?: string[] };
+type NavChild = { href: string; label: string; Icon: typeof LayoutDashboard };
+
+type NavLink = { href: string; label: string; Icon: typeof LayoutDashboard; permission?: string; ownerOnly?: boolean; hideFor?: string[]; children?: NavChild[] };
 
 type RoleContext = { role?: string; permissions?: string[]; extra_permissions?: string[] };
 
@@ -48,7 +53,16 @@ const GROUPS: { label: string; links: NavLink[] }[] = [
     label: "Manage",
     links: [
       { href: "/catalogue", label: "Catalogue", Icon: Package, permission: "catalogue.view" },
-      { href: "/transactions", label: "Transactions", Icon: ArrowLeftRight },
+      {
+        href: "/transactions",
+        label: "Transactions",
+        Icon: ArrowLeftRight,
+        children: [
+          { href: "/transactions/sales", label: "Sales", Icon: ShoppingCart },
+          { href: "/transactions/expenses", label: "Expenses", Icon: Wallet },
+        ],
+      },
+      { href: "/restock", label: "Restock", Icon: PackagePlus, permission: "stock.write" },
     ],
   },
   {
@@ -253,13 +267,59 @@ function Brand({ context }: { context: BusinessContext | null }) {
 }
 
 function SidebarLinks({ current, context, onNavigate }: { current: string; context?: RoleContext; onNavigate?: () => void }) {
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const linkClass = (active: boolean) =>
+    `flex min-h-11 items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm transition-colors ${
+      active
+        ? "nav-active font-semibold text-zinc-900"
+        : "text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900"
+    }`;
   return (
     <nav className="mt-5" aria-label="Primary">
       {visibleGroups(context).map((group) => (
         <div key={group.label} className="mb-5">
           <p className="px-2 pb-1.5 text-xs font-medium text-zinc-500">{group.label}</p>
           <div className="space-y-0.5">
-            {group.links.map(({ href, label, Icon }) => {
+            {group.links.map(({ href, label, Icon, children }) => {
+              if (children && children.length > 0) {
+                const childActive = children.some(
+                  (child) => current === child.href || current.startsWith(`${child.href}/`),
+                );
+                const open = expanded[label] ?? childActive;
+                return (
+                  <div key={href}>
+                    <button
+                      type="button"
+                      onClick={() => setExpanded((prev) => ({ ...prev, [label]: !open }))}
+                      aria-expanded={open}
+                      className={linkClass(childActive)}
+                    >
+                      <Icon aria-hidden className="h-4 w-4 shrink-0" />
+                      <span className="flex-1 text-left">{label}</span>
+                      <ChevronDown aria-hidden className={`h-4 w-4 transition-transform duration-200 ease-out ${open ? "rotate-180" : ""}`} />
+                    </button>
+                    {open ? (
+                      <div className="ml-4 mt-0.5 space-y-0.5 border-l border-zinc-200 pl-2">
+                        {children.map((child) => {
+                          const active = current === child.href;
+                          return (
+                            <Link
+                              key={child.href}
+                              href={child.href}
+                              onClick={onNavigate}
+                              aria-current={active ? "page" : undefined}
+                              className={linkClass(active)}
+                            >
+                              <child.Icon aria-hidden className="h-4 w-4 shrink-0" />
+                              {child.label}
+                            </Link>
+                          );
+                        })}
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              }
               const active = current === href;
               return (
                 <Link
@@ -267,11 +327,7 @@ function SidebarLinks({ current, context, onNavigate }: { current: string; conte
                   href={href}
                   onClick={onNavigate}
                   aria-current={active ? "page" : undefined}
-                  className={`flex min-h-11 items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm transition-colors ${
-                    active
-                      ? "nav-active font-semibold text-zinc-900"
-                      : "text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900"
-                  }`}
+                  className={linkClass(active)}
                 >
                   <Icon aria-hidden className="h-4 w-4 shrink-0" />
                   {label}
@@ -578,7 +634,7 @@ function MobileBottomNav({ current, context }: { current: string; context?: Role
     >
       <ul className="grid" style={{ gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))` }}>
         {tabs.map(({ href, label, Icon }) => {
-          const active = current === href;
+          const active = current === href || (href === "/transactions" && current.startsWith("/transactions/"));
           return (
             <li key={href}>
               <Link
@@ -721,7 +777,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
           <div className="sticky top-0 z-10 hidden items-center justify-between border-b border-zinc-200 bg-white px-6 py-3 md:flex">
             <span className="w-40" />
             <p className="text-sm font-medium text-zinc-900">
-              {LINKS.find((l) => l.href === pathname)?.label ?? "ShopTalk"}
+              {LINKS.flatMap((l) => [l, ...(l.children ?? [])]).find((l) => l.href === pathname)?.label ?? "ShopTalk"}
             </p>
             <div className="flex w-40 items-center justify-end gap-1.5">
               <Link href="/setup" aria-label="Help and setup" className="rounded-full border border-zinc-200 p-2 text-zinc-600 hover:text-zinc-900">

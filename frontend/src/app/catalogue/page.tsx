@@ -2,6 +2,7 @@
 
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { api, biz } from "../../lib/api";
 import { ApiError, CatalogueItem } from "../../lib/types";
@@ -11,7 +12,7 @@ import { amount, humanNumber } from "../../lib/format";
 import { DataTable } from "../../components/data-table";
 import { canDo } from "../../lib/permissions";
 import { toastError, toastSuccess } from "../../lib/toast";
-import { X } from "lucide-react";
+import { PackagePlus, X } from "lucide-react";
 import {
   ErrorNote,
   Loading,
@@ -46,14 +47,17 @@ const EMPTY_FORM = {
   kind: "product",
   selling_price: "",
   cost_price: "",
-  stock_tracked: false,
+  stock_tracked: true,
   active: true,
+  opening_quantity: "",
 };
 
 export default function CataloguePage() {
+  const router = useRouter();
   const { ready, businessId } = useSession();
   const { context } = useBusinessContext();
   const canWrite = canDo(context, "catalogue.write");
+  const canRestock = canDo(context, "stock.write");
   const [modalOpen, setModalOpen] = useState(false);
   const [items, setItems] = useState<CatalogueItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -117,7 +121,17 @@ export default function CataloguePage() {
       cost_price: item.cost_price ?? "",
       stock_tracked: item.stock_tracked,
       active: item.active,
+      opening_quantity: "",
     });
+  }
+
+  function restock(item: CatalogueItem) {
+    try {
+      window.sessionStorage.setItem("shoptalk.restockProduct", String(item.id));
+    } catch {
+      // Storage blocked: pick the item by hand on the restock page.
+    }
+    router.push("/restock");
   }
 
   async function save(event: React.FormEvent) {
@@ -136,14 +150,32 @@ export default function CataloguePage() {
     };
     try {
       if (editingId === null) {
-        await api(biz("/catalogue", businessId), { method: "POST", body });
+        const created = await api<CatalogueItem>(biz("/catalogue", businessId), { method: "POST", body });
+        const opening = Number(form.opening_quantity);
+        if (form.stock_tracked && opening > 0 && canRestock) {
+          try {
+            await api(biz("/stock-receipts", businessId), {
+              method: "POST",
+              body: {
+                items: [{ product_id: created.id, quantity: form.opening_quantity }],
+                idempotency_key: crypto.randomUUID(),
+              },
+            });
+            toastSuccess("Item added with opening stock.");
+          } catch (receiptError) {
+            toastError("Item added, but the opening stock was not recorded.");
+            setError(receiptError);
+          }
+        } else {
+          toastSuccess("Item added.");
+        }
       } else {
         await api(biz(`/catalogue/${editingId}`, businessId), {
           method: "PATCH",
           body,
         });
+        toastSuccess("Item saved.");
       }
-      toastSuccess(editingId === null ? "Item added." : "Item saved.");
       closeModal();
       await load();
     } catch (err) {
@@ -226,6 +258,17 @@ export default function CataloguePage() {
                       Edit
                     </button>
                   ) : null}
+                  {canRestock && item.stock_tracked ? (
+                    <button
+                      type="button"
+                      onClick={() => restock(item)}
+                      className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-zinc-900 hover:bg-zinc-100"
+                      aria-label={`Restock ${item.name}`}
+                      title="Restock"
+                    >
+                      <PackagePlus aria-hidden className="h-5 w-5" />
+                    </button>
+                  ) : null}
                 </li>
               ))}
             </ul>
@@ -267,6 +310,11 @@ export default function CataloguePage() {
                     {canWrite ? (
                       <button type="button" onClick={() => startEdit(item)} className="inline-flex min-h-11 items-center font-semibold text-zinc-900 hover:underline">
                         Edit
+                      </button>
+                    ) : null}
+                    {canRestock && item.stock_tracked ? (
+                      <button type="button" onClick={() => restock(item)} className="ml-3 inline-flex min-h-11 items-center font-semibold text-zinc-900 hover:underline">
+                        Restock
                       </button>
                     ) : null}
                   </td>
@@ -343,6 +391,19 @@ export default function CataloguePage() {
               inputMode="decimal"
             />
           </label>
+          {editingId === null && form.stock_tracked && canRestock ? (
+            <label className="block text-sm">
+              <span className="mb-1 block font-medium text-zinc-700">Opening quantity</span>
+              <input
+                className={inputClass}
+                value={form.opening_quantity}
+                onChange={(e) => setForm({ ...form, opening_quantity: e.target.value })}
+                inputMode="decimal"
+                placeholder="0"
+                aria-label="Opening quantity"
+              />
+            </label>
+          ) : null}
           <div className="flex items-end gap-4 pb-2 text-sm">
             <label className="flex items-center gap-2 text-zinc-700">
               <input
