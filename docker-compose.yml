@@ -46,6 +46,7 @@ services:
       SHOP_TALK_AI_API_KEY: ${SHOP_TALK_AI_API_KEY:-}
       SHOP_TALK_AI_BASE_URL: ${SHOP_TALK_AI_BASE_URL:-}
       SHOP_TALK_AI_MODEL: ${SHOP_TALK_AI_MODEL:-}
+      SHOP_TALK_AI_TRANSCRIBE_MODEL: ${SHOP_TALK_AI_TRANSCRIBE_MODEL:-}
     depends_on:
       db:
         condition: service_healthy

@@ -4,6 +4,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { api } from "./api";
+
 interface SpeechRecognitionAlternative {
   transcript: string;
   confidence: number;
@@ -29,6 +31,7 @@ interface SpeechRecognitionInstance {
   lang: string;
   interimResults: boolean;
   continuous: boolean;
+  maxAlternatives: number;
   onresult: ((event: SpeechRecognitionEvent) => void) | null;
   onend: (() => void) | null;
   onerror: ((event: { error?: string }) => void) | null;
@@ -38,6 +41,32 @@ interface SpeechRecognitionInstance {
 
 type RecognitionCtor = new () => SpeechRecognitionInstance;
 
+function cleanTranscript(text: string): string {
+  return text.replace(/\s+/g, " ").trim();
+}
+
+/** Join two transcript fragments without repeating the overlap. Recognizers
+ * re-report growing snapshots of the same phrase ("hello", then "hello I
+ * hope"), so a plain append turns one phrase into stacked copies. */
+export function joinTranscripts(a: string, b: string): string {
+  const left = cleanTranscript(a);
+  const right = cleanTranscript(b);
+  if (!left) return right;
+  if (!right) return left;
+  if (left === right) return left;
+  if (right.startsWith(left)) return right;
+  if (left.startsWith(right)) return left;
+  const leftWords = left.split(" ");
+  const rightWords = right.split(" ");
+  const maxOverlap = Math.min(leftWords.length, rightWords.length);
+  for (let k = maxOverlap; k > 0; k -= 1) {
+    const tail = leftWords.slice(-k).join(" ").toLowerCase();
+    const head = rightWords.slice(0, k).join(" ").toLowerCase();
+    if (tail === head) return [...leftWords, ...rightWords.slice(k)].join(" ");
+  }
+  return `${left} ${right}`;
+}
+
 function recognitionCtor(): RecognitionCtor | null {
   if (typeof window === "undefined") return null;
   const w = window as unknown as Record<string, RecognitionCtor | undefined>;
@@ -46,6 +75,62 @@ function recognitionCtor(): RecognitionCtor | null {
 
 export function isVoiceSupported(): boolean {
   return recognitionCtor() !== null;
+}
+
+/** The mic can always be recorded, even where the browser has no working
+ * speech service: the recording is transcribed server-side instead. */
+export function canRecordAudio(): boolean {
+  if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) return false;
+  const w = window as unknown as Record<string, unknown>;
+  return typeof w.AudioContext === "function" || typeof w.webkitAudioContext === "function";
+}
+
+function audioContextCtor(): (new () => AudioContext) | null {
+  if (typeof window === "undefined") return null;
+  const w = window as unknown as Record<string, unknown>;
+  const ctor = w.AudioContext ?? w.webkitAudioContext;
+  return typeof ctor === "function" ? (ctor as new () => AudioContext) : null;
+}
+
+/** Resample mono PCM down to the 16 kHz the transcription endpoint wants. */
+function downsample(samples: Float32Array, fromRate: number, toRate: number): Float32Array {
+  if (fromRate === toRate) return samples;
+  const ratio = fromRate / toRate;
+  const out = new Float32Array(Math.floor(samples.length / ratio));
+  for (let i = 0; i < out.length; i += 1) {
+    const start = Math.floor(i * ratio);
+    const end = Math.min(samples.length, Math.floor((i + 1) * ratio));
+    let sum = 0;
+    for (let j = start; j < end; j += 1) sum += samples[j];
+    out[i] = sum / Math.max(1, end - start);
+  }
+  return out;
+}
+
+/** Encode mono float PCM as a 16-bit WAV blob (16 kHz after downsample). */
+export function encodeWav(samples: Float32Array, sampleRate: number): Blob {
+  const buffer = new ArrayBuffer(44 + samples.length * 2);
+  const view = new DataView(buffer);
+  const writeText = (offset: number, text: string) => {
+    for (let i = 0; i < text.length; i += 1) view.setUint8(offset + i, text.charCodeAt(i));
+  };
+  writeText(0, "RIFF");
+  view.setUint32(4, 36 + samples.length * 2, true);
+  writeText(8, "WAVEfmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  writeText(36, "data");
+  view.setUint32(40, samples.length * 2, true);
+  for (let i = 0; i < samples.length; i += 1) {
+    const clamped = Math.max(-1, Math.min(1, samples[i]));
+    view.setInt16(44 + i * 2, clamped * 0x7fff, true);
+  }
+  return new Blob([buffer], { type: "audio/wav" });
 }
 
 export function isTtsSupported(): boolean {
@@ -187,6 +272,22 @@ export function useSpeechInput(
   // This session's raw interim fragment (no accumulation): banked into
   // accumRef when the session auto-ends so nothing is counted twice.
   const sessionInterimRef = useRef("");
+  // Final transcripts keyed by result index: rebuilt, never appended, so a
+  // re-reported final cannot be counted twice.
+  const finalsByIndexRef = useRef<Map<number, string>>(new Map());
+  const restartTimerRef = useRef<number | null>(null);
+  // Backup recording of the same turn, captured as 16 kHz WAV (the
+  // format the transcription endpoint requires). The browser speech
+  // service can hear speech yet return nothing; if it does, this
+  // recording is transcribed server-side instead of losing the words.
+  const captureRef = useRef<{
+    stream: MediaStream;
+    ctx: AudioContext;
+    source: MediaStreamAudioSourceNode;
+    processor: ScriptProcessorNode;
+    chunks: Float32Array[];
+    sampleRate: number;
+  } | null>(null);
   const manualStopRef = useRef(false);
   const erroredRef = useRef(false);
   // Voice heard during the current recognition segment (final or live
@@ -205,7 +306,7 @@ export function useSpeechInput(
   }, [onSegmentEnd]);
 
   useEffect(() => {
-    setSupported(isVoiceSupported());
+    setSupported(isVoiceSupported() || canRecordAudio());
   }, []);
 
   useEffect(() => {
@@ -213,23 +314,136 @@ export function useSpeechInput(
   }, [onFinal]);
 
   useEffect(() => {
-    return () => recognition.current?.stop();
+    return () => {
+      if (restartTimerRef.current) window.clearTimeout(restartTimerRef.current);
+      recognition.current?.stop();
+      const capture = captureRef.current;
+      captureRef.current = null;
+      if (capture) {
+        try {
+          capture.processor.disconnect();
+          capture.source.disconnect();
+        } catch {
+          /* unmounting */
+        }
+        capture.stream.getTracks().forEach((t) => t.stop());
+        void capture.ctx.close().catch(() => undefined);
+      }
+    };
   }, []);
+
+  const startBackupRecording = useCallback(() => {
+    const Ctor = audioContextCtor();
+    if (!Ctor || !canRecordAudio() || captureRef.current) return;
+    void navigator.mediaDevices
+      .getUserMedia({ audio: true })
+      .then((stream) => {
+        if (captureRef.current) {
+          stream.getTracks().forEach((t) => t.stop());
+          return;
+        }
+        const ctx = new Ctor();
+        const source = ctx.createMediaStreamSource(stream);
+        const processor = ctx.createScriptProcessor(4096, 1, 1);
+        const chunks: Float32Array[] = [];
+        processor.onaudioprocess = (event) => {
+          chunks.push(new Float32Array(event.inputBuffer.getChannelData(0)));
+        };
+        // ScriptProcessor only runs while connected; route through a
+        // silent gain so the mic never plays back into the speakers.
+        const mute = ctx.createGain();
+        mute.gain.value = 0;
+        source.connect(processor);
+        processor.connect(mute);
+        mute.connect(ctx.destination);
+        captureRef.current = {
+          stream, ctx, source, processor, chunks, sampleRate: ctx.sampleRate,
+        };
+      })
+      .catch(() => undefined);
+  }, []);
+
+  /** Stop the backup capture and return it as one 16 kHz WAV blob. */
+  const stopBackupRecording = useCallback((): Blob | null => {
+    const capture = captureRef.current;
+    captureRef.current = null;
+    if (!capture) return null;
+    try {
+      capture.processor.disconnect();
+      capture.source.disconnect();
+    } catch {
+      /* already torn down */
+    }
+    capture.stream.getTracks().forEach((t) => t.stop());
+    void capture.ctx.close().catch(() => undefined);
+    const total = capture.chunks.reduce((sum, c) => sum + c.length, 0);
+    if (total === 0) return null;
+    const merged = new Float32Array(total);
+    let offset = 0;
+    for (const chunk of capture.chunks) {
+      merged.set(chunk, offset);
+      offset += chunk.length;
+    }
+    return encodeWav(downsample(merged, capture.sampleRate, 16000), 16000);
+  }, []);
+
+  /** Deliver a finished turn. Browser transcript wins; if the speech
+   * service caught nothing, the backup recording is transcribed
+   * server-side so the words are not lost. */
+  const finishTurn = useCallback(
+    async (text: string) => {
+      const blob = stopBackupRecording();
+      const heard = cleanTranscript(text);
+      if (heard) {
+        setVoiceError("");
+        callback.current(heard);
+        return;
+      }
+      if (!blob || blob.size === 0) {
+        if (!erroredRef.current) {
+          setVoiceError("Didn't catch that. Check the browser is using the right microphone, speak a little closer, or type instead.");
+        }
+        return;
+      }
+      setInterim("Transcribing your recording…");
+      try {
+        const form = new FormData();
+        form.append("file", blob, "recording.wav");
+        const data = await api<{ text: string }>("/api/assistant/transcribe", { form });
+        const transcribed = cleanTranscript(data.text || "");
+        setInterim("");
+        if (transcribed) {
+          setVoiceError("");
+          callback.current(transcribed);
+        } else {
+          setVoiceError("Your recording was transcribed, but no words could be made out. Speak a little closer, or type instead.");
+        }
+      } catch {
+        setInterim("");
+        setVoiceError("The browser speech service caught nothing, and server transcription is unavailable. Type your request instead.");
+      }
+    },
+    [stopBackupRecording],
+  );
 
   const stop = useCallback(() => {
     // Manual stop means "I'm done talking": end this session for good and
     // deliver whatever was heard. Auto-ends below restart instead.
     manualStopRef.current = true;
+    if (restartTimerRef.current) {
+      window.clearTimeout(restartTimerRef.current);
+      restartTimerRef.current = null;
+    }
     if (!recognition.current) {
-      // Stopping in the gap between auto-sessions: deliver what was
-      // banked so far instead of dropping it.
+      // Stopping in the gap between auto-sessions (or in recorder-only
+      // mode): deliver what was banked, or transcribe the recording.
       const text = accumRef.current.trim();
       setListening(false);
-      if (text) callback.current(text);
+      void finishTurn(text);
       return;
     }
     recognition.current?.stop();
-  }, []);
+  }, [finishTurn]);
 
   // Runs when recognition reports a `network` failure: checks the browser
   // first, then whether Google is reachable at all, and says which one it is.
@@ -249,28 +463,42 @@ export function useSpeechInput(
   }, []);
 
   const launch = useCallback(function restart() {
+    // One live recognizer only. A second instance hearing the same speech
+    // interleaves duplicate fragments into one transcript.
+    if (recognition.current) return;
+    if (restartTimerRef.current) {
+      window.clearTimeout(restartTimerRef.current);
+      restartTimerRef.current = null;
+    }
     const Ctor = recognitionCtor();
     if (!Ctor) return;
     const instance = new Ctor();
     instance.lang = "en-US";
     instance.interimResults = true;
+    instance.maxAlternatives = 1;
     // Keep recording across pauses: when the browser auto-ends a quiet
     // session we start a fresh one, until the user taps stop.
     instance.continuous = true;
     instance.onresult = (event: SpeechRecognitionEvent) => {
-      let interimText = "";
-      for (let i = event.resultIndex; i < event.results.length; i += 1) {
+      if (recognition.current !== instance) return;
+      // Rebuild from the full result list every event. Finals are stored
+      // per result index, and only the latest interim counts: Android
+      // Chrome re-reports growing snapshots of one phrase, so appending
+      // every report stacks copies ("hello hello hello I hope...").
+      let latestInterim = "";
+      for (let i = 0; i < event.results.length; i += 1) {
         const result = event.results[i];
-        const transcript = result[0].transcript;
-        if (result.isFinal) finalRef.current += transcript;
-        else interimText += transcript;
+        const transcript = cleanTranscript(result[0].transcript);
+        if (!transcript) continue;
+        if (result.isFinal) finalsByIndexRef.current.set(i, transcript);
+        else latestInterim = transcript;
       }
-      sessionInterimRef.current = interimText;
-      // Full live transcript: banked segments plus this session's confirmed
-      // finals plus the in-progress fragment, so the screen always shows
-      // everything said so far and the composer appends after existing text.
-      const sessionLive = `${finalRef.current} ${interimText}`.trim();
-      const live = accumRef.current ? `${accumRef.current} ${sessionLive}`.trim() : sessionLive;
+      finalRef.current = [...finalsByIndexRef.current.entries()]
+        .sort((a, b) => a[0] - b[0])
+        .reduce((all, [, text]) => joinTranscripts(all, text), "");
+      sessionInterimRef.current = latestInterim;
+      const sessionLive = joinTranscripts(finalRef.current, latestInterim);
+      const live = joinTranscripts(accumRef.current, sessionLive);
       interimRef.current = live;
       setInterim(live);
       if (live) {
@@ -279,26 +507,27 @@ export function useSpeechInput(
       }
     };
     instance.onend = () => {
+      if (recognition.current !== instance) return;
       recognition.current = null;
       if (manualStopRef.current) {
         setListening(false);
         // Done talking: banked segments plus this session's tail go
         // through once, so a pause mid-sentence never costs words.
-        const tail = `${finalRef.current} ${sessionInterimRef.current}`.trim();
-        const text = accumRef.current ? `${accumRef.current} ${tail}`.trim() : tail;
-        if (text) {
-          callback.current(text);
-        } else if (!erroredRef.current) {
-          setVoiceError("Didn't catch that. Tap the mic and speak, or type instead.");
-        }
+        const tail = joinTranscripts(finalRef.current, sessionInterimRef.current);
+        const text = joinTranscripts(accumRef.current, tail);
+        finalsByIndexRef.current.clear();
+        // Browser transcript if there is one; otherwise the backup
+        // recording is transcribed server-side inside finishTurn.
+        void finishTurn(text);
         return;
       }
-      // Auto-end (pause, hiccup): bank this segment, keep the mic open,
-      // and keep showing everything heard so far while the user talks.
-      const seg = `${finalRef.current} ${sessionInterimRef.current}`.trim();
-      if (seg) accumRef.current = accumRef.current ? `${accumRef.current} ${seg}` : seg;
+      // Auto-end (pause, hiccup): bank only confirmed finals, keep the mic
+      // open. Banking the interim too would count it again when the next
+      // session re-reports the same phrase.
+      if (finalRef.current) accumRef.current = joinTranscripts(accumRef.current, finalRef.current);
       finalRef.current = "";
       sessionInterimRef.current = "";
+      finalsByIndexRef.current.clear();
       setInterim(accumRef.current);
       const hadSpeech = heardRef.current;
       heardRef.current = false;
@@ -307,16 +536,25 @@ export function useSpeechInput(
       } catch {
         /* a listener hiccup must never break the mic loop */
       }
-      if (!erroredRef.current && !haltedRef.current) restart();
-      else setListening(false);
+      if (!erroredRef.current && !haltedRef.current) {
+        // Brief pause before restarting: instant restarts on Android
+        // Chrome overlap the dying session and duplicate speech.
+        restartTimerRef.current = window.setTimeout(() => {
+          restartTimerRef.current = null;
+          if (!manualStopRef.current && !erroredRef.current && !haltedRef.current) restart();
+        }, 250);
+      } else setListening(false);
     };
     instance.onerror = (event: { error?: string }) => {
+      if (recognition.current !== instance) return;
       if (event.error === "not-allowed" || event.error === "service-not-allowed") {
         erroredRef.current = true;
         setVoiceError("Microphone blocked. Allow mic access in the browser, then try again.");
         manualStopRef.current = true;
       } else if (event.error === "no-speech") {
-        // Silence, not failure: stay open and keep waiting for speech.
+        // Silence, not failure: the browser ends this session and the
+        // auto-restart in onend opens a fresh one. Do not stop here, or
+        // the restart races the still-closing session.
         return;
       } else if (event.error && event.error !== "aborted") {
         erroredRef.current = true;
@@ -326,13 +564,21 @@ export function useSpeechInput(
         // diagnosis so the message names the actual cause.
         if (event.error === "network" && typeof navigator !== "undefined" && !navigator.onLine) {
           setVoiceError("You are offline, so the mic cannot hear you. Reconnect, then try again. Typing works the same way.");
+        } else if (event.error === "network" && captureRef.current) {
+          // The backup recording saves this turn: it is transcribed
+          // server-side when the session ends just below.
+          setVoiceError("Browser speech service failed. Transcribing your recording instead…");
         } else if (event.error === "network") {
           void diagnoseNetworkError();
         } else {
           setVoiceError(`Voice input failed (${event.error}). Typing works the same way.`);
         }
       }
-      recognition.current?.stop();
+      try {
+        instance.stop();
+      } catch {
+        /* already closing */
+      }
     };
     recognition.current = instance;
     try {
@@ -341,24 +587,32 @@ export function useSpeechInput(
       // start() throws if called twice in a row; the live session continues.
     }
     setListening(true);
-  }, [diagnoseNetworkError]);
+  }, [diagnoseNetworkError, finishTurn]);
 
   const start = useCallback(() => {
-    const Ctor = recognitionCtor();
-    if (!Ctor) return;
+    // Speech recognition or plain recording: at least one must exist.
+    if (!recognitionCtor() && !canRecordAudio()) return;
+    // Already listening (or restarting): a fresh start here would orphan
+    // the live recognizer and wipe the transcript it is building.
+    if (recognition.current || restartTimerRef.current || captureRef.current) return;
     setVoiceError("");
     cancelSpeech();
     finalRef.current = "";
     interimRef.current = "";
     accumRef.current = "";
     sessionInterimRef.current = "";
+    finalsByIndexRef.current.clear();
     manualStopRef.current = false;
     erroredRef.current = false;
     heardRef.current = false;
     haltedRef.current = false;
     setInterim("");
+    // Record from the first moment: if the speech service returns
+    // nothing, this recording is the only copy of the user's words.
+    startBackupRecording();
     launch();
-  }, [launch]);
+    if (!recognitionCtor()) setListening(true);
+  }, [launch, startBackupRecording]);
 
   const toggle = useCallback(() => {
     if (listening) stop();
@@ -369,8 +623,15 @@ export function useSpeechInput(
   // The next manual start clears the halt.
   const halt = useCallback(() => {
     haltedRef.current = true;
-    recognition.current?.stop();
-  }, []);
+    if (restartTimerRef.current) {
+      window.clearTimeout(restartTimerRef.current);
+      restartTimerRef.current = null;
+    }
+    // Halted turns are abandoned: drop the backup recording too.
+    void stopBackupRecording();
+    if (recognition.current) recognition.current.stop();
+    else setListening(false);
+  }, [stopBackupRecording]);
 
   return { listening, interim, supported, toggle, start, stop, halt, voiceError };
 }

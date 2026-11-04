@@ -32,6 +32,10 @@ python manage.py createsuperuser
   build time and must stay empty so calls stay same-origin.
 - Never publish the backend or database ports publicly. Only the frontend
   receives a domain.
+- Voice fallback transcription uses the same `SHOP_TALK_AI_API_KEY` and
+  `SHOP_TALK_AI_BASE_URL` as the assistant. On Meta's API it defaults to
+  Muse Voice Transcribe; set `SHOP_TALK_AI_TRANSCRIBE_MODEL` only to
+  override the model. Without a key, mic failures fall back to typing.
 - `DJANGO_DEBUG` is forced to `False` in the compose file.
 - Postgres data lives in the `pgdata` volume. Back it up with
   `pg_dump` from the db container; Coolify scheduled backups work too.

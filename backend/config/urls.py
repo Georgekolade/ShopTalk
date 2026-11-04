@@ -25,6 +25,11 @@ urlpatterns = [
     path('api/health/', health, name='api-health'),
     path('admin/', admin.site.urls),
     path('api/auth/token/', obtain_auth_token, name='api-token'),
+    path(
+        'api/assistant/transcribe',
+        views_assistant.AssistantTranscribeView.as_view(),
+        name='assistant-transcribe',
+    ),
     path('api/auth/register/', views_extra.RegisterView.as_view(), name='api-register'),
     path(
         'api/businesses/<int:business_id>/profile',

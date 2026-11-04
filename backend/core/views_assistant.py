@@ -1,11 +1,15 @@
 """Assistant endpoints: chat turns and prepared-action confirmation."""
 
+from rest_framework.exceptions import ValidationError
+from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from .ai import ProviderError
 from .assistant import confirm_action, handle_message
 from .permissions import HasBusinessPermission, IsBusinessMember
+from .transcribe import MAX_AUDIO_BYTES, transcribe_audio
 
 
 class AssistantMessageView(APIView):
@@ -29,6 +33,40 @@ class AssistantMessageView(APIView):
             attachment_name=attachment_name,
         )
         return Response(result)
+
+
+class AssistantTranscribeView(APIView):
+    """Transcribe a mic recording the browser's own speech service
+    failed to handle. Authenticated users only; no business scope is
+    needed because nothing is read or written, the text just returns."""
+
+    permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def post(self, request):
+        uploaded = request.FILES.get('file')
+        if uploaded is None:
+            raise ValidationError({'file': 'An audio recording is required.'})
+        if uploaded.size and uploaded.size > MAX_AUDIO_BYTES:
+            raise ValidationError({'file': 'Recording is too large.'})
+        try:
+            text = transcribe_audio(uploaded)
+        except ProviderError as exc:
+            return Response(
+                {
+                    'error': {
+                        'code': 'transcription-unavailable',
+                        'message': str(exc),
+                        'field': None,
+                        'next_step': (
+                            'Voice transcription is not available right '
+                            'now. Type your request instead.'
+                        ),
+                    }
+                },
+                status=503,
+            )
+        return Response({'text': text})
 
 
 class AssistantActionConfirmView(APIView):
