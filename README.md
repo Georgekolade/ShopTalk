@@ -58,10 +58,12 @@ The design principle that holds the whole system together:
 | Record a sale | "Sell 2 honey beans 2.5kg" | Items resolved, priced server-side, preview shown, confirmed, committed; stock drops, receipt issued |
 | Receive stock | "We received 20 honey beans 5kg" | Restock preview, confirmed, stock rises with a movement record |
 | Record an expense | "Spent 4,500 on delivery fuel" | Preview, confirmed, saved and included in reports |
+| Add to the catalogue | "Add zobo 1500 to the catalogue" | Preview with name, kind, and price; confirmed, product created; duplicates and missing prices get a question instead |
 | Ask about the business | "How much did we sell this week?" | Trusted reporting code calculates the figure; the model only words the answer |
 | Check stock | "How many 10kg packs are left?" | Answered from live stock balances |
 | Teach the business | Paste a policy or price list in Setup | Stored as a knowledge document the assistant can search, treated always as data, never as instructions |
 | Upload a document | Attach a receipt, PDF, or spreadsheet | Text is extracted server-side and the assistant works from it |
+| Talk hands-free | Tap the mic and speak | Words appear live while you talk; the final transcript lands on stop, editable before sending |
 
 Ambiguity is handled by asking, never guessing: an unknown product, a
 missing quantity, or two matching products produces a focused
@@ -128,7 +130,7 @@ screen, so voice and text always take the identical backend path.
 ## Product tour
 
 - **Assistant** — voice/text conversation with action previews,
-  continuous hands-free mode with spoken replies, document attachments,
+  continuous hands-free mode with spoken replies, catalogue additions, document attachments,
   receipts and invoice downloads.
 - **Dashboard** — sales, expenses, profit, low stock, trends, and top
   products for any period, compared against the previous period.
