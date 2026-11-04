@@ -609,6 +609,7 @@ export default function AssistantPage() {
       setDraft(appendVoice(voiceBaseRef.current, live));
     },
     handleSegmentEnd,
+    { serverOnly: true },
   );
 
   useEffect(() => {

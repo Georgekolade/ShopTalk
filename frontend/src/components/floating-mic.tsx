@@ -27,7 +27,10 @@ export function FloatingMic() {
     }
     toastInfo("Heard you. Review it in the assistant.");
     if (pathname !== "/assistant") router.push("/assistant");
-  });
+  },
+  undefined,
+  undefined,
+  { serverOnly: true });
 
   if (!supported || pathname === "/assistant") return null;
 

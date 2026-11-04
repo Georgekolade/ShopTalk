@@ -77,7 +77,7 @@ Model API key serves reasoning and voice.
 | --- | --- |
 | **Muse Spark** (`muse-spark-1.3`, OpenAI-compatible chat completions at `api.meta.ai/v1`) | Understands free phrasing in the owner's own language and style, and returns a structured *plan*: read-tool calls, one proposed write, a confirmation, or a clarifying question |
 | **Muse Spark reply composition** | Turns trusted tool results into a short, warm, spoken-friendly answer — from the tool output only, never from memory |
-| **Muse Voice Transcribe** (`muse-voice-transcribe-1.0`, Meta ASR endpoint) | Server-side speech-to-text fallback. When the browser's built-in speech service hears speech but returns no transcript (verified on current Chrome and Edge builds), the mic recording is transcribed by Muse Voice instead of losing the user's words |
+| **Muse Voice Transcribe** (`muse-voice-transcribe-1.0`, Meta ASR endpoint) | Server-side speech-to-text. The mic recording goes straight to Muse Voice Transcribe — no browser speech service in the path |
 | **Provider fallback** | If the Muse service is unreachable, planning falls back to a deterministic heuristic provider, so sales, stock, and expenses still work. If transcription is unconfigured, the app says so and typing remains available |
 
 What the model never does: it never sets prices or totals, never checks
@@ -89,10 +89,7 @@ context a task needs is sent — data minimisation by design.
 ### Voice pipeline
 
 ```
-Mic ──► Browser speech recognition (live transcript, editable)
-  │        │ returns nothing / network error
-  │        ▼
-  └──► Parallel 16 kHz WAV recording ──► POST /api/assistant/transcribe
+Mic ──► 16 kHz WAV recording ──► POST /api/assistant/transcribe
               ──► Muse Voice Transcribe ──► text
 Text and voice converge ──► POST /api/assistant/messages ──► Muse Spark plan
 ```
@@ -102,9 +99,8 @@ screen, so voice and text always take the identical backend path.
 
 ## How a request flows
 
-1. **Input.** Voice is transcribed (browser first, Muse Voice as
-   fallback) or the user types. The text lands in the composer, editable
-   before sending.
+1. **Input.** Voice is recorded and transcribed by Muse Voice, or the
+   user types. The text lands in the composer, editable before sending.
 2. **Planning.** Muse Spark (or the fallback provider) interprets the
    request against business context, catalogue aliases, rules, and
    conversation history, and returns a typed plan.
@@ -162,7 +158,7 @@ Asking for another business's data resolves to 404, never a leak.
 ┌────────────────────────────────────────────────────────────┐
 │ Next.js 16 PWA (React 19, TypeScript)                      │
 │ Assistant · Dashboard · Catalogue · Transactions · Reports │
-│ Voice: browser speech → WAV fallback · TTS replies         │
+│ Voice: Muse transcription (server-side) · TTS replies      │
 └──────────────────────────┬─────────────────────────────────┘
                            │ same-origin /api/* (server-side rewrite)
 ┌──────────────────────────▼─────────────────────────────────┐
@@ -190,7 +186,7 @@ submission never silently duplicates a transaction.
 | Backend | Django 6.1, Django REST Framework, Gunicorn |
 | Database | PostgreSQL 16 |
 | AI reasoning | Meta Muse Spark via OpenAI-compatible chat completions |
-| Speech-to-text | Browser Web Speech API, falling back to Meta Muse Voice Transcribe |
+| Speech-to-text | Meta Muse Voice Transcribe (server-side; recordings upload to /api/assistant/transcribe) |
 | Speech output | Browser text-to-speech |
 | Documents | reportlab and pdfmake (branded receipts/invoices), pypdf and openpyxl/xlrd (uploads) |
 | Deployment | Docker Compose behind Coolify/Traefik with automatic HTTPS |
@@ -274,7 +270,7 @@ Everything is environment-driven; secrets never live in source control.
 | `DJANGO_ALLOWED_HOSTS`, `CSRF_TRUSTED_ORIGINS` | Public hostname and HTTPS origin |
 | `SHOP_TALK_AI_PROVIDER` | `meta` / `llm` (OpenAI-compatible), `anthropic`, `mock` (tests), or `heuristic` (offline default) |
 | `SHOP_TALK_AI_API_KEY`, `SHOP_TALK_AI_BASE_URL`, `SHOP_TALK_AI_MODEL` | Muse Spark access, e.g. base `https://api.meta.ai/v1`, model `muse-spark-1.3` |
-| `SHOP_TALK_AI_TRANSCRIBE_MODEL` | Optional override; defaults to `muse-voice-transcribe-1.0` on Meta, `whisper-1` elsewhere |
+| `SHOP_TALK_AI_TRANSCRIBE_MODEL` | Voice model; defaults to `muse-voice-transcribe-1.0` on Meta, `whisper-1` elsewhere. Voice has no offline fallback, so the key, base URL, and model must be set for the mic to work |
 
 Deployment on Coolify is a Docker Compose resource from this
 repository with the domain assigned to the frontend service on port
@@ -291,7 +287,7 @@ python manage.py test core
 The backend suite covers unit math, service transactions, API
 permissions and tenant isolation, assistant orchestration against a
 scripted provider, the PRD acceptance cases, a provider-quality
-evaluation set, and the transcription fallback endpoint.
+evaluation set, and the transcription endpoint.
 
 ```powershell
 cd frontend

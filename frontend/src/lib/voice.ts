@@ -254,7 +254,12 @@ export function useSpeechInput(
   onFinal: (text: string) => void,
   onInterim?: (text: string) => void,
   onSegmentEnd?: (hadSpeech: boolean) => void,
+  opts?: { serverOnly?: boolean },
 ) {
+  // Server-only mode: skip the browser speech service entirely and send
+  // the mic recording straight to Muse transcription. Omit the flag to
+  // re-enable the browser recognizer as the first pass.
+  const serverOnly = opts?.serverOnly ?? false;
   const [listening, setListening] = useState(false);
   const [interim, setInterim] = useState("");
   const [voiceError, setVoiceError] = useState("");
@@ -463,6 +468,7 @@ export function useSpeechInput(
   }, []);
 
   const launch = useCallback(function restart() {
+    if (serverOnly) return;
     // One live recognizer only. A second instance hearing the same speech
     // interleaves duplicate fragments into one transcript.
     if (recognition.current) return;
@@ -587,7 +593,7 @@ export function useSpeechInput(
       // start() throws if called twice in a row; the live session continues.
     }
     setListening(true);
-  }, [diagnoseNetworkError, finishTurn]);
+  }, [diagnoseNetworkError, finishTurn, serverOnly]);
 
   const start = useCallback(() => {
     // Speech recognition or plain recording: at least one must exist.
@@ -607,12 +613,16 @@ export function useSpeechInput(
     heardRef.current = false;
     haltedRef.current = false;
     setInterim("");
-    // Record from the first moment: if the speech service returns
-    // nothing, this recording is the only copy of the user's words.
+    // Record from the first moment. In server-only mode the recording is
+    // the transcript source: it goes straight to Muse transcription.
     startBackupRecording();
+    if (serverOnly) {
+      setListening(true);
+      return;
+    }
     launch();
     if (!recognitionCtor()) setListening(true);
-  }, [launch, startBackupRecording]);
+  }, [launch, startBackupRecording, serverOnly]);
 
   const toggle = useCallback(() => {
     if (listening) stop();
