@@ -175,7 +175,12 @@ let currentUtterance: SpeechSynthesisUtterance | null = null;
 export function speak(text: string, onEnd?: () => void) {
   if (!isTtsSupported()) return;
   cancelSpeech();
-  const utterance = new SpeechSynthesisUtterance(toSpeakable(text));
+  const clean = toSpeakable(text);
+  if (!clean) {
+    onEnd?.();
+    return;
+  }
+  const utterance = new SpeechSynthesisUtterance(clean);
   currentUtterance = utterance;
   const voice = pickVoice();
   if (voice) utterance.voice = voice;
