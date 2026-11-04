@@ -59,11 +59,12 @@ The design principle that holds the whole system together:
 | Receive stock | "We received 20 honey beans 5kg" | Restock preview, confirmed, stock rises with a movement record |
 | Record an expense | "Spent 4,500 on delivery fuel" | Preview, confirmed, saved and included in reports |
 | Add to the catalogue | "Add zobo 1500 to the catalogue" | Preview with name, kind, and price; confirmed, product created; duplicates and missing prices get a question instead |
+| Edit or deactivate an item | "Change garri to 6000" / "Remove zobo from the catalogue" | Preview of the change; confirmed, applied (deactivation keeps history, the item just stops selling) |
 | Ask about the business | "How much did we sell this week?" | Trusted reporting code calculates the figure; the model only words the answer |
 | Check stock | "How many 10kg packs are left?" | Answered from live stock balances |
 | Teach the business | Paste a policy or price list in Setup | Stored as a knowledge document the assistant can search, treated always as data, never as instructions |
 | Upload a document | Attach a receipt, PDF, or spreadsheet | Text is extracted server-side and the assistant works from it |
-| Talk hands-free | Tap the mic and speak | Words appear live while you talk; the final transcript lands on stop, editable before sending |
+| Talk hands-free | Tap the mic and speak | Words appear live while you talk; a pause sends the turn and the mic stays open for more; the final transcript lands in the composer, editable before sending |
 
 Ambiguity is handled by asking, never guessing: an unknown product, a
 missing quantity, or two matching products produces a focused
@@ -79,8 +80,8 @@ Model API key serves reasoning and voice.
 | --- | --- |
 | **Muse Spark** (`muse-spark-1.3`, OpenAI-compatible chat completions at `api.meta.ai/v1`) | Understands free phrasing in the owner's own language and style, and returns a structured *plan*: read-tool calls, one proposed write, a confirmation, or a clarifying question |
 | **Muse Spark reply composition** | Turns trusted tool results into a short, warm, spoken-friendly answer — from the tool output only, never from memory |
-| **Muse Voice Transcribe** (`muse-voice-transcribe-1.0`, Meta ASR endpoint) | Server-side speech-to-text fallback. When the browser's built-in speech service hears speech but returns no transcript (verified on current Chrome and Edge builds), the mic recording is transcribed by Muse Voice instead of losing the user's words |
-| **Provider fallback** | If the Muse service is unreachable, planning falls back to a deterministic heuristic provider, so sales, stock, and expenses still work. If transcription is unconfigured, the app says so and typing remains available |
+| **Vosk speech engine** (local, offline, no key) | Server-side speech-to-text fallback. When the browser's built-in speech service hears speech but returns no transcript, the 16 kHz mic recording is transcribed on the server by the `vosk-model-small-en-us-0.15` model instead of losing the user's words. The Meta `muse-voice-transcribe-1.0` cloud path is retained commented-out in `backend/core/transcribe.py` |
+| **Provider fallback** | If the Muse service is unreachable, planning falls back to a deterministic heuristic provider, so sales, stock, and expenses still work. If the local speech model is missing, transcription answers 503 and the mic simply keeps listening; typing always remains available |
 
 What the model never does: it never sets prices or totals, never checks
 permissions, never writes to the database, and never executes SQL. It
@@ -92,15 +93,18 @@ context a task needs is sent — data minimisation by design.
 
 ```
 Mic ──► Browser speech recognition (live transcript, editable)
-  │        │ returns nothing / network error
+  │        │ hears nothing / network error
   │        ▼
   └──► Parallel 16 kHz WAV recording ──► POST /api/assistant/transcribe
-              ──► Muse Voice Transcribe ──► text
+              ──► local Vosk engine ──► text (silent on failure: mic keeps listening)
+Pause (~4 s) ──► turn auto-sends (browser text or Vosk) ──► mic stays open
 Text and voice converge ──► POST /api/assistant/messages ──► Muse Spark plan
 ```
 
 While recording, the audio so far is transcribed every few seconds
-so words appear live; the upload on stop stays final.
+by Vosk whenever the browser is silent, so words appear live; the
+upload on stop stays final. Transcription failures never surface as
+errors — the mic simply keeps listening.
 
 Spoken replies use text-to-speech with the same transcript shown on
 screen, so voice and text always take the identical backend path.
@@ -135,9 +139,11 @@ screen, so voice and text always take the identical backend path.
 - **Dashboard** — sales, expenses, profit, low stock, trends, and top
   products for any period, compared against the previous period.
 - **Catalogue** — products and services with aliases, prices, costs,
-  stock tracking, and CSV import with validation.
-- **Transactions** — committed sales, stock receipts, and expenses,
-  with branded receipt and invoice PDFs generated from saved rows.
+  stock tracking, opening quantities, and CSV import with validation.
+  Restocking lives on its own page with a paginated table.
+- **Transactions** — a dropdown opens dedicated Sales and Expenses
+  pages: sticky add-record form beside each history table, with
+  branded receipt and invoice PDFs generated from saved rows.
 - **Reports** — sales totals, expenses, profit (revenue minus cost of
   goods, expenses reported separately), and low-stock, with the date
   range and data limitations stated.
@@ -167,7 +173,7 @@ Asking for another business's data resolves to 404, never a leak.
 ┌────────────────────────────────────────────────────────────┐
 │ Next.js 16 PWA (React 19, TypeScript)                      │
 │ Assistant · Dashboard · Catalogue · Transactions · Reports │
-│ Voice: browser speech → WAV fallback · TTS replies         │
+│ Voice: browser speech → local Vosk · TTS replies          │
 └──────────────────────────┬─────────────────────────────────┘
                            │ same-origin /api/* (server-side rewrite)
 ┌──────────────────────────▼─────────────────────────────────┐
@@ -175,7 +181,7 @@ Asking for another business's data resolves to 404, never a leak.
 │ Provider adapter ─► Muse Spark plan / fallback heuristic   │
 │ Typed tools ─► deterministic services (money, stock, audit)│
 │ Knowledge search · document extraction · PDF documents     │
-│ Transcription ─► Muse Voice Transcribe (Meta ASR)          │
+│ Transcription ─► local Vosk engine (offline)               │
 └──────────────────────────┬─────────────────────────────────┘
                            ▼
                      PostgreSQL
@@ -195,7 +201,7 @@ submission never silently duplicates a transaction.
 | Backend | Django 6.1, Django REST Framework, Gunicorn |
 | Database | PostgreSQL 16 |
 | AI reasoning | Meta Muse Spark via OpenAI-compatible chat completions |
-| Speech-to-text | Browser Web Speech API, falling back to Meta Muse Voice Transcribe |
+| Speech-to-text | Browser Web Speech API, falling back to a local Vosk engine (offline, no key) |
 | Speech output | Browser text-to-speech |
 | Documents | reportlab and pdfmake (branded receipts/invoices), pypdf and openpyxl/xlrd (uploads) |
 | Deployment | Docker Compose behind Coolify/Traefik with automatic HTTPS |
@@ -246,6 +252,9 @@ cd backend
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
+# Offline speech model for the voice fallback (~50 MB, once):
+Invoke-WebRequest https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip -OutFile model.zip
+Expand-Archive model.zip core\models; Remove-Item model.zip
 copy .env.example .env        # fill in DB values and secrets
 python manage.py migrate
 python manage.py seed_geopure --replace-legacy
@@ -279,7 +288,8 @@ Everything is environment-driven; secrets never live in source control.
 | `DJANGO_ALLOWED_HOSTS`, `CSRF_TRUSTED_ORIGINS` | Public hostname and HTTPS origin |
 | `SHOP_TALK_AI_PROVIDER` | `meta` / `llm` (OpenAI-compatible), `anthropic`, `mock` (tests), or `heuristic` (offline default) |
 | `SHOP_TALK_AI_API_KEY`, `SHOP_TALK_AI_BASE_URL`, `SHOP_TALK_AI_MODEL` | Muse Spark access, e.g. base `https://api.meta.ai/v1`, model `muse-spark-1.3` |
-| `SHOP_TALK_AI_TRANSCRIBE_MODEL` | Optional override; defaults to `muse-voice-transcribe-1.0` on Meta, `whisper-1` elsewhere |
+| `SHOP_TALK_AI_TRANSCRIBE_MODEL` | Only used if the commented-out Meta cloud transcribe path is re-enabled; defaults to `muse-voice-transcribe-1.0` on Meta, `whisper-1` elsewhere |
+| `VOSK_MODEL_PATH` | Optional override for the local speech model directory; defaults to `backend/core/models/vosk-model-small-en-us-0.15` |
 
 Deployment on Coolify is a Docker Compose resource from this
 repository with the domain assigned to the frontend service on port
