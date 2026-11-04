@@ -59,3 +59,8 @@ tools/mindrally-skills/
 # OS / editors
 .DS_Store
 Thumbs.db
+
+# Vosk offline speech model (large, fetched at build/first run)
+backend/core/models/vosk-model-*/
+backend/core/models/*.zip
+

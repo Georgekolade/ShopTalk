@@ -250,7 +250,18 @@ function canReachGoogle(): Promise<boolean> {
   });
 }
 
+/** Pause length that ends a turn; the mic stays open for more talk. */
+const TURN_SILENCE_MS = 4000;
+/** Dead air that stops the mic quietly, with no error shown. */
+const IDLE_STOP_MS = 30000;
+/** Mic-energy RMS at or above this counts as voice. */
+const VAD_THRESHOLD = 0.02;
+/** Auto-restart gap bounds (mobile indicator flicker backoff). */
+const RESTART_BASE_MS = 250;
+const RESTART_MAX_MS = 2000;
+
 export function useSpeechInput(
+
   onFinal: (text: string) => void,
   onInterim?: (text: string) => void,
   onSegmentEnd?: (hadSpeech: boolean) => void,
@@ -285,6 +296,7 @@ export function useSpeechInput(
     ctx: AudioContext;
     source: MediaStreamAudioSourceNode;
     processor: ScriptProcessorNode;
+    analyser: AnalyserNode;
     chunks: Float32Array[];
     sampleRate: number;
   } | null>(null);
@@ -299,6 +311,14 @@ export function useSpeechInput(
   // Live Muse interim: ticks while recording; uploads serialize.
   const interimTimerRef = useRef<number | null>(null);
   const interimBusyRef = useRef(false);
+  // Voice-activity clock: last moment real voice was heard (mic energy
+  // or browser text). Drives pause-to-send and dead-air stop.
+  const lastVoiceAtRef = useRef(0);
+  const idleTimerRef = useRef<number | null>(null);
+  const autoTurnBusyRef = useRef(false);
+  // Auto-restart gap: backs off while sessions die speechless so the
+  // mobile mic indicator stops flickering in dead air.
+  const restartDelayRef = useRef(RESTART_BASE_MS);
 
   useEffect(() => {
     interimCallback.current = onInterim;
@@ -320,6 +340,7 @@ export function useSpeechInput(
     return () => {
       if (restartTimerRef.current) window.clearTimeout(restartTimerRef.current);
       if (interimTimerRef.current) window.clearInterval(interimTimerRef.current);
+      if (idleTimerRef.current) window.clearInterval(idleTimerRef.current);
       recognition.current?.stop();
       const capture = captureRef.current;
       captureRef.current = null;
@@ -349,6 +370,10 @@ export function useSpeechInput(
         const ctx = new Ctor();
         const source = ctx.createMediaStreamSource(stream);
         const processor = ctx.createScriptProcessor(4096, 1, 1);
+    // Voice-activity tap: feeds the watchdog RMS meter, never the speakers.
+    const analyser = ctx.createAnalyser();
+    analyser.fftSize = 2048;
+    source.connect(analyser);
         const chunks: Float32Array[] = [];
         processor.onaudioprocess = (event) => {
           chunks.push(new Float32Array(event.inputBuffer.getChannelData(0)));
@@ -361,7 +386,7 @@ export function useSpeechInput(
         processor.connect(mute);
         mute.connect(ctx.destination);
         captureRef.current = {
-          stream, ctx, source, processor, chunks, sampleRate: ctx.sampleRate,
+          stream, ctx, source, processor, analyser, chunks, sampleRate: ctx.sampleRate,
         };
       })
       .catch(() => undefined);
@@ -435,12 +460,9 @@ export function useSpeechInput(
         callback.current(heard);
         return;
       }
-      if (!blob || blob.size === 0) {
-        if (!erroredRef.current) {
-          setVoiceError("Didn't catch that. Check the browser is using the right microphone, speak a little closer, or type instead.");
-        }
-        return;
-      }
+      // Silent when there is nothing to transcribe: the mic simply keeps
+      // listening, and the user notices nothing.
+      if (!blob || blob.size === 0) return;
       setInterim("Transcribing your recording…");
       try {
         const form = new FormData();
@@ -451,12 +473,9 @@ export function useSpeechInput(
         if (transcribed) {
           setVoiceError("");
           callback.current(transcribed);
-        } else {
-          setVoiceError("Your recording was transcribed, but no words could be made out. Speak a little closer, or type instead.");
         }
       } catch {
         setInterim("");
-        setVoiceError("The browser speech service caught nothing, and server transcription is unavailable. Type your request instead.");
       }
     },
     [stopBackupRecording],
@@ -469,6 +488,10 @@ export function useSpeechInput(
     if (interimTimerRef.current) {
       window.clearInterval(interimTimerRef.current);
       interimTimerRef.current = null;
+    }
+    if (idleTimerRef.current) {
+      window.clearInterval(idleTimerRef.current);
+      idleTimerRef.current = null;
     }
     if (restartTimerRef.current) {
       window.clearTimeout(restartTimerRef.current);
@@ -484,6 +507,101 @@ export function useSpeechInput(
     }
     recognition.current?.stop();
   }, [finishTurn]);
+
+  /** Snapshot the backup recording WITHOUT stopping it: encodes the audio
+   * captured so far as 16 kHz WAV and clears the bank for the next turn.
+   * The mic stream stays open, so listening continues seamlessly. */
+  const snapshotBackupRecording = useCallback((): Blob | null => {
+    const capture = captureRef.current;
+    if (!capture || capture.chunks.length === 0) return null;
+    const total = capture.chunks.reduce((sum, c) => sum + c.length, 0);
+    if (total < capture.sampleRate / 2) return null;
+    const merged = new Float32Array(total);
+    let offset = 0;
+    for (const chunk of capture.chunks) {
+      merged.set(chunk, offset);
+      offset += chunk.length;
+    }
+    capture.chunks = [];
+    return encodeWav(downsample(merged, capture.sampleRate, 16000), 16000);
+  }, []);
+
+  /** Deliver one paused turn while the mic stays open. Browser text wins;
+   * otherwise the snapshot goes to Vosk. Any failure stays silent: the
+   * mic keeps listening and the user notices nothing. */
+  const deliverAutoTurn = useCallback(async () => {
+    if (autoTurnBusyRef.current || manualStopRef.current || haltedRef.current || erroredRef.current) return;
+    const banked = joinTranscripts(accumRef.current, finalRef.current);
+    const blob = snapshotBackupRecording();
+    if (!banked && !blob) return;
+    autoTurnBusyRef.current = true;
+    try {
+      if (banked) {
+        setVoiceError("");
+        callback.current(banked);
+      } else if (blob) {
+        try {
+          const form = new FormData();
+          form.append("file", blob, "turn.wav");
+          const data = await api<{ text: string }>("/api/assistant/transcribe", { method: "POST", form });
+          const transcribed = cleanTranscript(data.text || "");
+          if (transcribed) {
+            setVoiceError("");
+            callback.current(transcribed);
+          }
+        } catch {
+          /* Vosk unreachable: stay silent, keep listening */
+        }
+      }
+    } finally {
+      accumRef.current = "";
+      finalRef.current = "";
+      sessionInterimRef.current = "";
+      finalsByIndexRef.current.clear();
+      heardRef.current = false;
+      setInterim("");
+      autoTurnBusyRef.current = false;
+    }
+  }, [snapshotBackupRecording]);
+
+  /** One-second watchdog. Voice (mic energy or browser text) resets the
+   * clock. A few quiet seconds with banked words ends the turn but the
+   * mic stays open for more talk; long dead air stops silently. The chat
+   * keeps every delivered turn, so nothing said is ever lost. */
+  const watchdog = useCallback(() => {
+    if (manualStopRef.current || erroredRef.current || haltedRef.current) return;
+    if (!captureRef.current && !recognition.current) return;
+    const now = Date.now();
+    let voice = false;
+    try {
+      const analyser = captureRef.current?.analyser;
+      if (analyser) {
+        const buf = new Float32Array(analyser.fftSize);
+        analyser.getFloatTimeDomainData(buf);
+        let sum = 0;
+        for (let i = 0; i < buf.length; i += 1) sum += buf[i] * buf[i];
+        voice = Math.sqrt(sum / buf.length) >= VAD_THRESHOLD;
+      }
+    } catch {
+      voice = false;
+    }
+    if (voice) {
+      lastVoiceAtRef.current = now;
+      restartDelayRef.current = RESTART_BASE_MS;
+      return;
+    }
+    const banked = accumRef.current.trim() || finalRef.current.trim();
+    if (banked && now - lastVoiceAtRef.current >= TURN_SILENCE_MS) {
+      void deliverAutoTurn();
+      return;
+    }
+    if (!banked && now - lastVoiceAtRef.current >= IDLE_STOP_MS) {
+      // Dead air: drop the empty bank and stop quietly. No error: the
+      // user simply stopped talking.
+      if (captureRef.current) captureRef.current.chunks = [];
+      stop();
+    }
+  }, [deliverAutoTurn, stop]);
 
   // Runs when recognition reports a `network` failure: checks the browser
   // first, then whether Google is reachable at all, and says which one it is.
@@ -543,6 +661,8 @@ export function useSpeechInput(
       setInterim(live);
       if (live) {
         heardRef.current = true;
+        lastVoiceAtRef.current = Date.now();
+        restartDelayRef.current = RESTART_BASE_MS;
         interimCallback.current?.(live);
       }
     };
@@ -578,11 +698,14 @@ export function useSpeechInput(
       }
       if (!erroredRef.current && !haltedRef.current) {
         // Brief pause before restarting: instant restarts on Android
-        // Chrome overlap the dying session and duplicate speech.
+        // Chrome overlap the dying session and duplicate speech. The gap
+        // backs off while sessions die speechless so the mobile mic
+        // indicator stops flickering in dead air; voice resets it.
         restartTimerRef.current = window.setTimeout(() => {
           restartTimerRef.current = null;
           if (!manualStopRef.current && !erroredRef.current && !haltedRef.current) restart();
-        }, 250);
+        }, restartDelayRef.current);
+        restartDelayRef.current = Math.min(restartDelayRef.current * 2, RESTART_MAX_MS);
       } else setListening(false);
     };
     instance.onerror = (event: { error?: string }) => {
@@ -656,9 +779,17 @@ export function useSpeechInput(
     interimTimerRef.current = window.setInterval(() => {
       void transcribeSnapshot();
     }, 4000);
+    // Watchdog: a pause ends the turn (browser text or Vosk delivers
+    // it), long dead air stops silently. The chat keeps everything.
+    lastVoiceAtRef.current = Date.now();
+    restartDelayRef.current = RESTART_BASE_MS;
+    if (idleTimerRef.current) window.clearInterval(idleTimerRef.current);
+    idleTimerRef.current = window.setInterval(() => {
+      watchdog();
+    }, 1000);
     launch();
     if (!recognitionCtor()) setListening(true);
-  }, [launch, startBackupRecording, transcribeSnapshot]);
+  }, [launch, startBackupRecording, transcribeSnapshot, watchdog]);
 
   const toggle = useCallback(() => {
     if (listening) stop();
@@ -672,6 +803,10 @@ export function useSpeechInput(
     if (interimTimerRef.current) {
       window.clearInterval(interimTimerRef.current);
       interimTimerRef.current = null;
+    }
+    if (idleTimerRef.current) {
+      window.clearInterval(idleTimerRef.current);
+      idleTimerRef.current = null;
     }
     if (restartTimerRef.current) {
       window.clearTimeout(restartTimerRef.current);

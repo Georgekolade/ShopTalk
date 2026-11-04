@@ -130,9 +130,6 @@ function nextKey() {
   return `msg-${Date.now()}-${keyCounter}`;
 }
 
-// Silent segments in a row before auto-listen stands down.
-const MAX_EMPTY_SEGS = 3;
-
 interface HistoryItem {
   role: string;
   content: string;
@@ -494,28 +491,14 @@ export default function AssistantPage() {
     supported: false,
     listening: false,
   });
-  const haltRef = useRef<(() => void) | null>(null);
   const startRef = useRef<(() => void) | null>(null);
   const autoTimer = useRef<number | null>(null);
-  const emptySegs = useRef(0);
   // Continuous conversation: the mic re-opens after each reply (default on).
   const [continuous, setContinuous] = useState(true);
-  // Stood down after silence so the mic never listens forever.
-  const [autoPaused, setAutoPaused] = useState(false);
 
-  const handleSegmentEnd = useCallback((hadSpeech: boolean) => {
-    const ctl = ctlRef.current;
-    if (!ctl.continuous || ctl.mode !== "audio") return;
-    if (hadSpeech) {
-      emptySegs.current = 0;
-      return;
-    }
-    emptySegs.current += 1;
-    if (emptySegs.current >= MAX_EMPTY_SEGS) {
-      haltRef.current?.();
-      setAutoPaused(true);
-    }
-  }, []);
+  // The mic stays open until the user taps stop: silence never stands it
+  // down, so segment ends need no bookkeeping.
+  const handleSegmentEnd = useCallback(() => {}, []);
 
   const speakReply = useCallback(
     (text: string) => {
@@ -533,14 +516,11 @@ export default function AssistantPage() {
         const ctl = ctlRef.current;
         if (!ctl.continuous || ctl.mode !== "audio" || !ctl.supported || ctl.listening) return;
         if (typeof document !== "undefined" && document.hidden) return;
-        if (emptySegs.current >= MAX_EMPTY_SEGS) return;
         autoTimer.current = window.setTimeout(() => {
           autoTimer.current = null;
           const now = ctlRef.current;
           if (!now.continuous || now.mode !== "audio" || !now.supported || now.listening) return;
           if (typeof document !== "undefined" && document.hidden) return;
-          if (emptySegs.current >= MAX_EMPTY_SEGS) return;
-          setAutoPaused(false);
           startRef.current?.();
         }, 600);
       });
@@ -620,7 +600,7 @@ export default function AssistantPage() {
   // A transcript that lands while a reply is still in flight waits here and
   // sends the moment the assistant is free. Nothing spoken is ever dropped.
   const pendingAudioRef = useRef<string | null>(null);
-  const { listening, interim, supported, toggle, start, stop, halt, voiceError } = useSpeechInput(
+  const { listening, interim, supported, toggle, start, stop, voiceError } = useSpeechInput(
     (text) => {
       voiceLiveRef.current = "";
       setVoiceMode(true);
@@ -654,7 +634,6 @@ export default function AssistantPage() {
   );
 
   useEffect(() => {
-    haltRef.current = halt;
     startRef.current = start;
   });
 
@@ -689,8 +668,6 @@ export default function AssistantPage() {
         window.clearTimeout(autoTimer.current);
         autoTimer.current = null;
       }
-      emptySegs.current = 0;
-      setAutoPaused(false);
       voiceBaseRef.current = draft;
       voiceLiveRef.current = "";
     }
@@ -708,8 +685,6 @@ export default function AssistantPage() {
       }
       return next;
     });
-    setAutoPaused(false);
-    emptySegs.current = 0;
   }, []);
 
   const toggleTts = useCallback(() => {
@@ -1038,15 +1013,10 @@ export default function AssistantPage() {
               ? "Speaking. Tap the mic any time to cut in."
               : supported
                 ? continuous
-                  ? "Tap the mic and talk. Your words send automatically, and the mic re-opens after each reply."
+                  ? "Tap the mic and talk. The mic stays open until you tap stop, and re-opens after each reply."
                   : "Tap the mic and talk. Your words send automatically."
                 : "This browser has no speech recognition. Switch to Text mode to type instead."}
       </p>
-      {autoPaused && !listening ? (
-        <p role="status" className="mx-auto mt-2 max-w-md rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm font-medium text-zinc-700">
-          Paused after a quiet spell. Tap the mic to keep talking.
-        </p>
-      ) : null}
       {voiceError ? (
         <p role="alert" className="mx-auto mt-3 max-w-md rounded-xl border border-red-200 bg-white px-3 py-2 text-sm font-medium text-red-800">
           {voiceError}
@@ -1195,11 +1165,6 @@ export default function AssistantPage() {
               {voiceError ? (
                 <p role="alert" className="mb-2 rounded-xl border border-red-200 bg-white px-3 py-2 text-sm font-medium text-red-800 shadow-lg">
                   {voiceError}
-                </p>
-              ) : null}
-              {autoPaused && !listening ? (
-                <p role="status" className="mb-2 rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm font-medium text-zinc-700 shadow-lg">
-                  Paused after a quiet spell. Tap the mic to keep talking.
                 </p>
               ) : null}
               <div className="flex items-center gap-3 rounded-2xl border border-zinc-200 bg-white p-2 pr-4 shadow-[0_16px_40px_rgba(0,0,0,0.10)]">

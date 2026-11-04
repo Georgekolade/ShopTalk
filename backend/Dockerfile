@@ -10,7 +10,7 @@ WORKDIR /app
 
 # Runtime libs for psycopg/reportlab wheels; curl for the healthcheck.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends curl libpq5 \
+    && apt-get install -y --no-install-recommends curl libpq5 unzip \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd -r app && useradd -r -g app -d /app app
 
@@ -19,6 +19,12 @@ RUN pip install -r requirements.txt
 
 COPY --chown=app:app . .
 COPY --chown=app:app entrypoint.sh /entrypoint.sh
+# Vosk offline speech model: fetched at build so the repo stays small.
+RUN curl -fsSL -o /tmp/vosk-model.zip https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip \
+    && mkdir -p /app/core/models \
+    && unzip -q /tmp/vosk-model.zip -d /app/core/models \
+    && rm /tmp/vosk-model.zip \
+    && chown -R app:app /app/core/models
 RUN chmod +x /entrypoint.sh \
     && mkdir -p /app/staticfiles \
     && chown -R app:app /app/staticfiles

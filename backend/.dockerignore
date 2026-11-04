@@ -11,3 +11,5 @@ staticfiles/
 .coverage
 htmlcov/
 .git/
+core/models/vosk-model-*/
+core/models/*.zip

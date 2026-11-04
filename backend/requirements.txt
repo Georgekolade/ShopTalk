@@ -9,3 +9,4 @@ openpyxl>=3.1,<4
 xlrd>=2,<3
 gunicorn>=23,<24
 whitenoise>=6,<7
+vosk>=0.3.45,<1
