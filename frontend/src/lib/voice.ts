@@ -296,6 +296,9 @@ export function useSpeechInput(
   // Set by halt(): the current auto-end must not restart the mic.
   const haltedRef = useRef(false);
   const segmentEndRef = useRef(onSegmentEnd);
+  // Live Muse interim: ticks while recording; uploads serialize.
+  const interimTimerRef = useRef<number | null>(null);
+  const interimBusyRef = useRef(false);
 
   useEffect(() => {
     interimCallback.current = onInterim;
@@ -316,6 +319,7 @@ export function useSpeechInput(
   useEffect(() => {
     return () => {
       if (restartTimerRef.current) window.clearTimeout(restartTimerRef.current);
+      if (interimTimerRef.current) window.clearInterval(interimTimerRef.current);
       recognition.current?.stop();
       const capture = captureRef.current;
       captureRef.current = null;
@@ -387,6 +391,38 @@ export function useSpeechInput(
     return encodeWav(downsample(merged, capture.sampleRate, 16000), 16000);
   }, []);
 
+  /** POST the audio recorded so far and show the running transcript.
+   * Interim only: failures stay silent, the final upload on stop decides. */
+  const transcribeSnapshot = useCallback(async () => {
+    const capture = captureRef.current;
+    if (!capture || interimBusyRef.current) return;
+    const total = capture.chunks.reduce((sum, c) => sum + c.length, 0);
+    if (total < capture.sampleRate * 2) return;
+    interimBusyRef.current = true;
+    try {
+      const merged = new Float32Array(total);
+      let offset = 0;
+      for (const chunk of capture.chunks) {
+        merged.set(chunk, offset);
+        offset += chunk.length;
+      }
+      const blob = encodeWav(downsample(merged, capture.sampleRate, 16000), 16000);
+      const form = new FormData();
+      form.append("file", blob, "live.wav");
+      const data = await api<{ text: string }>("/api/assistant/transcribe", { method: "POST", form });
+      const live = cleanTranscript(data.text || "");
+      // Browser live text wins when the speech service hears anything.
+      if (live && !heardRef.current) {
+        setInterim(live);
+        interimCallback.current?.(live);
+      }
+    } catch {
+      /* interim is best-effort; the final upload reports real failures */
+    } finally {
+      interimBusyRef.current = false;
+    }
+  }, []);
+
   /** Deliver a finished turn. Browser transcript wins; if the speech
    * service caught nothing, the backup recording is transcribed
    * server-side so the words are not lost. */
@@ -430,6 +466,10 @@ export function useSpeechInput(
     // Manual stop means "I'm done talking": end this session for good and
     // deliver whatever was heard. Auto-ends below restart instead.
     manualStopRef.current = true;
+    if (interimTimerRef.current) {
+      window.clearInterval(interimTimerRef.current);
+      interimTimerRef.current = null;
+    }
     if (restartTimerRef.current) {
       window.clearTimeout(restartTimerRef.current);
       restartTimerRef.current = null;
@@ -610,9 +650,15 @@ export function useSpeechInput(
     // Record from the first moment: if the speech service returns
     // nothing, this recording is the only copy of the user's words.
     startBackupRecording();
+    // Live interim: transcribe the audio so far every few seconds so
+    // words appear while talking; the upload on stop stays final.
+    if (interimTimerRef.current) window.clearInterval(interimTimerRef.current);
+    interimTimerRef.current = window.setInterval(() => {
+      void transcribeSnapshot();
+    }, 4000);
     launch();
     if (!recognitionCtor()) setListening(true);
-  }, [launch, startBackupRecording]);
+  }, [launch, startBackupRecording, transcribeSnapshot]);
 
   const toggle = useCallback(() => {
     if (listening) stop();
@@ -623,6 +669,10 @@ export function useSpeechInput(
   // The next manual start clears the halt.
   const halt = useCallback(() => {
     haltedRef.current = true;
+    if (interimTimerRef.current) {
+      window.clearInterval(interimTimerRef.current);
+      interimTimerRef.current = null;
+    }
     if (restartTimerRef.current) {
       window.clearTimeout(restartTimerRef.current);
       restartTimerRef.current = null;

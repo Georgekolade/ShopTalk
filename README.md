@@ -97,6 +97,9 @@ Mic ──► Browser speech recognition (live transcript, editable)
 Text and voice converge ──► POST /api/assistant/messages ──► Muse Spark plan
 ```
 
+While recording, the audio so far is transcribed every few seconds
+so words appear live; the upload on stop stays final.
+
 Spoken replies use text-to-speech with the same transcript shown on
 screen, so voice and text always take the identical backend path.
 
