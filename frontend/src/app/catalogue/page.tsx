@@ -199,7 +199,7 @@ export default function CataloguePage() {
     try {
       const result = await api<ImportResult>(
         biz(`/catalogue/import?preview=${preview ? "true" : "false"}`, businessId),
-        { method: "POST", form: formData },
+        { method: "POST", form: formData, timeoutMs: 60000 },
       );
       setImportResult(result);
       if (!preview) {

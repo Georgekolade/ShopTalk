@@ -12,7 +12,7 @@ from decimal import Decimal, InvalidOperation
 from django.http import Http404
 from rest_framework.exceptions import ValidationError
 
-from .ai import ProviderError, fallback_plan, get_provider
+from .ai import LLMProvider, ProviderError, fallback_plan, get_provider
 from .models import ActionLog, Conversation, Message, PendingAction, ProductService
 from .tools import READ_TOOLS, WRITE_INTENTS, execute_tool
 
@@ -485,14 +485,28 @@ def handle_message(*, business, user, text, input_mode='text', conversation_id=N
             'text': attachment_text[:4000],
         }
     provider = get_provider()
+    history = _history(conversation)
     if attachment_text and provider.__class__.__name__ in ('HeuristicProvider', 'MockProvider'):
         plan = _attachment_plan(
             instruction=text, doc_text=attachment_text,
             filename=attachment_name or 'attached document')
         used_fallback = False
+    elif isinstance(provider, LLMProvider) and not attachment_text:
+        # Fast path: clear shop commands (sell/receive/spend/report/stock)
+        # are planned locally in milliseconds. Only free-form turns pay
+        # for a reasoning-model round trip.
+        fast = fallback_plan(text=text, context=context, history=history)
+        if fast.tool_calls or fast.write_intent or fast.message:
+            plan, used_fallback = fast, False
+        else:
+            try:
+                plan = provider.plan(text=text, context=context, history=history)
+                used_fallback = False
+            except ProviderError:
+                plan, used_fallback = fast, True
     else:
         try:
-            plan = provider.plan(text=text, context=context, history=_history(conversation))
+            plan = provider.plan(text=text, context=context, history=history)
             used_fallback = False
         except ProviderError:
             if attachment_text:
@@ -500,7 +514,7 @@ def handle_message(*, business, user, text, input_mode='text', conversation_id=N
                     instruction=text, doc_text=attachment_text,
                     filename=attachment_name or 'attached document')
             else:
-                plan = fallback_plan(text=text, context=context, history=_history(conversation))
+                plan = fallback_plan(text=text, context=context, history=history)
             used_fallback = True
     tool_runs = []
     reply, action = _run_plan(
@@ -509,14 +523,9 @@ def handle_message(*, business, user, text, input_mode='text', conversation_id=N
     )
     if used_fallback:
         reply = f'{reply} (Answered locally; the AI provider is unavailable.)'
-    elif action is None and tool_runs and hasattr(provider, 'compose_reply'):
-        # Read-only turn answered by the model itself: conversational and
-        # specific, grounded in the tool results it just saw. Writes, confirms
-        # and clarifications keep their exact orchestrator wording.
-        try:
-            reply = provider.compose_reply(text=text, tool_runs=tool_runs, context=context)
-        except ProviderError:
-            pass
+    # No second model call to rephrase read results: _read_reply already
+    # renders them from trusted tool output, and skipping the extra
+    # round trip keeps read turns inside one reasoning call.
     documents = None
     if tool_runs and tool_runs[-1]['tool'] == 'get_sale_documents':
         result = tool_runs[-1]['result']

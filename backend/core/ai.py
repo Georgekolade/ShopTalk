@@ -635,7 +635,8 @@ class LLMProvider:
             raise ProviderError('LLM provider is not configured (missing model).')
         return key, base, model
 
-    def _call(self, *, key, base, model, messages, include_tools=True):
+    def _call(self, *, key, base, model, messages, include_tools=True,
+              max_tokens=1024, timeout=20):
         import json as json_lib
         import time
         import urllib.error
@@ -645,7 +646,7 @@ class LLMProvider:
             'model': model,
             'messages': messages,
             'temperature': 0.2,
-            'max_tokens': 2000,
+            'max_tokens': max_tokens,
         }
         if include_tools:
             payload['tools'] = [{'type': 'function', 'function': {
@@ -667,7 +668,7 @@ class LLMProvider:
                          'Content-Type': 'application/json'},
             )
             try:
-                response = urllib.request.urlopen(request, timeout=25)
+                response = urllib.request.urlopen(request, timeout=timeout)
                 return json_lib.loads(response.read().decode())
             except urllib.error.HTTPError as exc:
                 try:
@@ -677,12 +678,12 @@ class LLMProvider:
                 last_error = f'HTTP {exc.code} {detail}'.strip()
                 if exc.code not in (429, 500, 502, 503) or attempt == 1:
                     raise ProviderError(f'AI model error: {last_error}')
-                time.sleep(1 + attempt)
+                time.sleep(0.5)
             except Exception as exc:
                 last_error = str(exc)[:200]
                 if attempt == 1:
                     raise ProviderError(f'AI model unreachable: {last_error}')
-                time.sleep(1 + attempt)
+                time.sleep(0.5)
         raise ProviderError(f'AI model error: {last_error}')
 
     def plan(self, *, text, context, history):
@@ -830,6 +831,7 @@ class LLMProvider:
                    for run in tool_runs]
         data = self._call(
             key=key, base=base, model=model, include_tools=False,
+            max_tokens=512, timeout=12,
             messages=[
                 {'role': 'system', 'content': self.REPLY_SYSTEM},
                 {'role': 'user', 'content': (
@@ -950,7 +952,7 @@ class AnthropicProvider(LLMProvider):
         messages.append({'role': 'user', 'content': text[:2000]})
         body = json_lib.dumps({
             'model': model,
-            'max_tokens': 2000,
+            'max_tokens': 1024,
             'temperature': 0.2,
             'system': (
                 f'{self.SYSTEM}\n{type_hint}\n<business_context>\n'
@@ -971,7 +973,7 @@ class AnthropicProvider(LLMProvider):
                          'Content-Type': 'application/json'},
             )
             try:
-                response = urllib.request.urlopen(request, timeout=25)
+                response = urllib.request.urlopen(request, timeout=20)
                 data = json_lib.loads(response.read().decode())
                 break
             except urllib.error.HTTPError as exc:
@@ -982,12 +984,12 @@ class AnthropicProvider(LLMProvider):
                 last_error = f'HTTP {exc.code} {detail}'.strip()
                 if exc.code not in (429, 500, 502, 503) or attempt == 1:
                     raise ProviderError(f'Muse error: {last_error}')
-                time.sleep(1 + attempt)
+                time.sleep(0.5)
             except Exception as exc:
                 last_error = str(exc)[:200]
                 if attempt == 1:
                     raise ProviderError(f'Muse unreachable: {last_error}')
-                time.sleep(1 + attempt)
+                time.sleep(0.5)
         if data is None:
             raise ProviderError(f'Muse error: {last_error}')
         calls = []
@@ -1017,7 +1019,7 @@ class AnthropicProvider(LLMProvider):
                    for run in tool_runs]
         body = json_lib.dumps({
             'model': model,
-            'max_tokens': 2000,
+            'max_tokens': 512,
             'temperature': 0.2,
             'system': self.REPLY_SYSTEM,
             'messages': [{'role': 'user', 'content': (
@@ -1035,7 +1037,7 @@ class AnthropicProvider(LLMProvider):
                          'Content-Type': 'application/json'},
             )
             try:
-                response = urllib.request.urlopen(request, timeout=25)
+                response = urllib.request.urlopen(request, timeout=20)
                 data = json_lib.loads(response.read().decode())
                 break
             except urllib.error.HTTPError as exc:
@@ -1046,12 +1048,12 @@ class AnthropicProvider(LLMProvider):
                 last_error = f'HTTP {exc.code} {detail}'.strip()
                 if exc.code not in (429, 500, 502, 503) or attempt == 1:
                     raise ProviderError(f'Muse error: {last_error}')
-                time.sleep(1 + attempt)
+                time.sleep(0.5)
             except Exception as exc:
                 last_error = str(exc)[:200]
                 if attempt == 1:
                     raise ProviderError(f'Muse unreachable: {last_error}')
-                time.sleep(1 + attempt)
+                time.sleep(0.5)
         if data is None:
             raise ProviderError(f'Muse error: {last_error}')
         try:

@@ -107,11 +107,11 @@ function timeoutError(): ApiError {
   return new ApiError(0, {
     error: {
       code: "timeout",
-      message: "ShopTalk server took too long to answer.",
+      message: "ShopTalk took too long to answer.",
       field: null,
       next_step:
-        "If you use a VPN, proxy, or data-saving app, set it to bypass " +
-        "localhost and 127.0.0.1, then retry.",
+        "Wait a moment, then retry. If it keeps happening, check that " +
+        "the ShopTalk backend and AI service are running.",
     },
   });
 }
@@ -151,9 +151,27 @@ function parseJsonBody(text: string, status: number): unknown {
   }
 }
 
-export async function api<T>(
+// Concurrent identical GETs (shell + page both ask for /context) share
+// one network round trip. Entries clear on settle, so data stays fresh.
+const inFlightGets = new Map<string, Promise<unknown>>();
+
+export function api<T>(
   path: string,
-  options: { method?: string; body?: unknown; form?: FormData } = {},
+  options: { method?: string; body?: unknown; form?: FormData; timeoutMs?: number } = {},
+): Promise<T> {
+  const method = options.method ?? "GET";
+  if (method !== "GET") return apiOnce<T>(path, options);
+  const key = `${path}::${getToken() ?? ""}`;
+  const existing = inFlightGets.get(key);
+  if (existing) return existing as Promise<T>;
+  const pending = apiOnce<T>(path, options).finally(() => inFlightGets.delete(key));
+  inFlightGets.set(key, pending);
+  return pending;
+}
+
+async function apiOnce<T>(
+  path: string,
+  options: { method?: string; body?: unknown; form?: FormData; timeoutMs?: number } = {},
 ): Promise<T> {
   const headers: Record<string, string> = {};
   const token = getToken();
@@ -173,7 +191,7 @@ export async function api<T>(
         method,
         headers,
         body: payload,
-        signal: AbortSignal.timeout(15000),
+        signal: AbortSignal.timeout(options.timeoutMs ?? 15000),
       });
       break;
     } catch (err) {
@@ -217,7 +235,7 @@ export async function apiBlob(path: string): Promise<Blob> {
   const token = getToken();
   const response = await fetch(`${API_BASE}${path}`, {
     headers: token ? { Authorization: `Token ${token}` } : {},
-    signal: AbortSignal.timeout(20000),
+    signal: AbortSignal.timeout(60000),
   });
   if (!response.ok) {
     const text = await response.text().catch(() => "");

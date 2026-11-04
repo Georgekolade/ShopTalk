@@ -439,7 +439,7 @@ export function useSpeechInput(
       const blob = encodeWav(downsample(merged, capture.sampleRate, 16000), 16000);
       const form = new FormData();
       form.append("file", blob, "live.wav");
-      const data = await api<{ text: string }>("/api/assistant/transcribe", { method: "POST", form });
+      const data = await api<{ text: string }>("/api/assistant/transcribe", { method: "POST", form, timeoutMs: 60000 });
       const live = cleanTranscript(data.text || "");
       // Browser live text wins when the speech service hears anything.
       if (live && !heardRef.current) {
@@ -472,7 +472,7 @@ export function useSpeechInput(
       try {
         const form = new FormData();
         form.append("file", blob, "recording.wav");
-        const data = await api<{ text: string }>("/api/assistant/transcribe", { method: "POST", form });
+        const data = await api<{ text: string }>("/api/assistant/transcribe", { method: "POST", form, timeoutMs: 60000 });
         const transcribed = cleanTranscript(data.text || "");
         setInterim("");
         if (transcribed) {
@@ -548,7 +548,7 @@ export function useSpeechInput(
         try {
           const form = new FormData();
           form.append("file", blob, "turn.wav");
-          const data = await api<{ text: string }>("/api/assistant/transcribe", { method: "POST", form });
+          const data = await api<{ text: string }>("/api/assistant/transcribe", { method: "POST", form, timeoutMs: 60000 });
           const transcribed = cleanTranscript(data.text || "");
           if (transcribed) {
             setVoiceError("");

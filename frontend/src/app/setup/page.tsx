@@ -189,7 +189,7 @@ export default function SetupPage() {
     try {
       const form = new FormData();
       form.append("file", file);
-      await api(biz("/knowledge", businessId), { method: "POST", form });
+      await api(biz("/knowledge", businessId), { method: "POST", form, timeoutMs: 60000 });
       toastSuccess("Document added. ShopTalk can search it from the next message.");
       await load();
     } catch (err) {

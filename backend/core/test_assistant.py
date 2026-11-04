@@ -524,6 +524,31 @@ class AssistantGuardTests(AssistantCase):
         self.assertEqual(len(knowledge['opening_hours']), 300)
         self.assertNotIn('bad', knowledge)
 
+    def test_llm_fast_path_answers_clear_commands_without_model(self):
+        from unittest import mock
+
+        with override_settings(SHOP_TALK_AI_PROVIDER='llm'):
+            with mock.patch.object(
+                LLMProvider, 'plan', side_effect=AssertionError('model called')
+            ):
+                response = self.ask('sell 1 garri')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['state'], 'awaiting_confirmation')
+
+    def test_llm_fast_path_defers_free_form_to_model(self):
+        from unittest import mock
+
+        from .ai import Plan
+
+        with override_settings(SHOP_TALK_AI_PROVIDER='llm'):
+            with mock.patch.object(
+                LLMProvider, 'plan', return_value=Plan(message='Model reply.')
+            ) as plan:
+                response = self.ask('explain quantum pricing theory please')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data['reply'], 'Model reply.')
+        plan.assert_called_once()
+
     def test_system_prompt_defines_role_objectives_constraints_format(self):
         for tag in ('<role>', '<objectives>', '<constraints>', '<output_format>'):
             self.assertIn(tag, LLMProvider.SYSTEM)

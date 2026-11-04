@@ -575,11 +575,11 @@ export default function AssistantPage() {
               form.append("input_mode", inputMode);
               if (conversationId !== null) form.append("conversation_id", String(conversationId));
               form.append("file", file);
-              return api<AssistantReply>(biz("/assistant/messages", businessId), { method: "POST", form });
+              return api<AssistantReply>(biz("/assistant/messages", businessId), { method: "POST", form, timeoutMs: 90000 });
             })()
           : await api<AssistantReply>(biz("/assistant/messages", businessId), {
               method: "POST",
-              body: { text: instruction, input_mode: inputMode, conversation_id: conversationId },
+              timeoutMs: 90000, body: { text: instruction, input_mode: inputMode, conversation_id: conversationId },
             });
         setConversationId(reply.conversation_id);
         setMessages((old) => [
@@ -864,7 +864,7 @@ export default function AssistantPage() {
       try {
         const result = await api<ConfirmResult>(biz(`/assistant/actions/${action.id}/confirm`, businessId), {
           method: "POST",
-          body: { confirm },
+          timeoutMs: 30000, body: { confirm },
         });
         setMessages((old) => {
           const updated = old.map((message) =>
