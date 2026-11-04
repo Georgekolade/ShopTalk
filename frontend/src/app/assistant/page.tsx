@@ -201,6 +201,11 @@ function ApprovalCard({
 }) {
   const payload = action.payload as {
     lines?: { product: string; quantity: string; line_total: string }[];
+    name?: string;
+    kind?: string;
+    selling_price?: string;
+    cost_price?: string | null;
+    stock_tracked?: boolean;
   };
   return (
     <div className="mt-3 overflow-hidden rounded-xl border border-amber-300 bg-amber-50">
@@ -220,6 +225,32 @@ function ApprovalCard({
                 <dd className="font-medium tabular-nums text-zinc-900">{amount(line.line_total)}</dd>
               </div>
             ))}
+          </dl>
+        ) : null}
+        {!payload.lines && payload.name ? (
+          <dl className="mt-2 space-y-1 border-t border-amber-200 pt-2 text-sm">
+            <div className="flex justify-between gap-3">
+              <dt className="text-zinc-700">Item</dt>
+              <dd className="font-medium text-zinc-900">{payload.name}{payload.kind ? ` (${payload.kind})` : null}</dd>
+            </div>
+            {payload.selling_price ? (
+              <div className="flex justify-between gap-3">
+                <dt className="text-zinc-700">Selling price</dt>
+                <dd className="font-medium tabular-nums text-zinc-900">{amount(payload.selling_price)}</dd>
+              </div>
+            ) : null}
+            {payload.cost_price ? (
+              <div className="flex justify-between gap-3">
+                <dt className="text-zinc-700">Cost price</dt>
+                <dd className="font-medium tabular-nums text-zinc-900">{amount(payload.cost_price)}</dd>
+              </div>
+            ) : null}
+            {payload.stock_tracked ? (
+              <div className="flex justify-between gap-3">
+                <dt className="text-zinc-700">Stock</dt>
+                <dd className="font-medium text-zinc-900">Tracked</dd>
+              </div>
+            ) : null}
           </dl>
         ) : null}
         <div className="mt-3 flex flex-col gap-2 sm:flex-row">

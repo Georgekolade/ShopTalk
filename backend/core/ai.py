@@ -167,6 +167,9 @@ class HeuristicProvider(BaseProvider):
                 return Plan(message='Nothing is waiting for confirmation right now.')
             if self._is_negative(lowered, loose=False):
                 return Plan(message='Nothing is waiting for confirmation right now.')
+        catalogue = self._catalogue_plan(lowered, text)
+        if catalogue is not None:
+            return catalogue
         documents = self._document_plan(lowered)
         if documents is not None:
             return documents
@@ -195,8 +198,9 @@ class HeuristicProvider(BaseProvider):
             return Plan(message=self._help(context))
         return Plan(
             clarify=(
-                'I can record sales, stock receipts, and expenses, or answer '
-                'questions about sales, stock, profit, and trends. '
+                'I can record sales, stock receipts, and expenses, add items '
+                'to the catalogue, or answer questions about sales, stock, '
+                'profit, and trends. '
                 'I can also fetch a receipt or invoice PDF. What should I do?'
             )
         )
@@ -237,6 +241,36 @@ class HeuristicProvider(BaseProvider):
         if re.search(r'\b(sell|sold|received|restock|spent)\b\s+\d', lowered):
             return None
         return Plan(tool_calls=[ToolCall('search_knowledge', {'query': raw})])
+
+    def _catalogue_plan(self, lowered, raw):
+        """'add <name> <price> to catalogue' or 'new product|service <name> <price>'.
+
+        Runs before the stock-receipt parser, which would otherwise read
+        a leading "add" as a receipt. The price is required; without it
+        the planner asks instead of guessing.
+        """
+        if 'catalog' not in lowered and 'new product' not in lowered and 'new service' not in lowered:
+            return None
+        amounts = AMOUNT_RE.findall(raw.replace(',', ''))
+        if not amounts:
+            return Plan(
+                clarify='What should it sell for? Say "add garri 5000 to the catalogue".'
+            )
+        price = amounts[-1]
+        kind = 'service' if 'service' in lowered else 'product'
+        marker = re.search(r'new product|new service|add\b', lowered)
+        name = raw[marker.end():] if marker else raw
+        cut = name.rfind(price)
+        if cut != -1:
+            name = name[:cut] + ' ' + name[cut + len(price):]
+        name = re.sub(r'\b(to the catalogue|to catalogue|catalogue|catalog)\b\.?\s*$', '', name, flags=re.IGNORECASE)
+        name = ' '.join(name.split()).strip(' ?.')
+        if not name:
+            return Plan(clarify='What should the new item be called, and what price should it sell for?')
+        return Plan(
+            write_intent='add_catalogue_item',
+            write_args={'name': name, 'selling_price': price, 'kind': kind},
+        )
 
     def _document_plan(self, lowered):
         if not re.search(r'\b(receipts?|invoices?)\b', lowered):
@@ -471,6 +505,7 @@ class LLMProvider:
         '- Never dump items as a comma-separated paragraph.\n'
         'Examples:\n'
         '- "sold 2 garri and 1 rice" -> propose_sale with those lines.\n'
+        '- "add zobo 1500 to the catalogue" -> propose_product with that name and price.\n'
         '- "how much rice left?" -> search_products, then check_stock.\n'
         '- "sell am" (no item) -> ask_question: which item and how many?\n'
         '- "yes" while one action awaits confirmation -> confirm_pending.\n'
@@ -500,6 +535,8 @@ class LLMProvider:
          'args': {'lines': [{'name': 'string', 'quantity': 'string'}]}},
         {'name': 'propose_expense', 'description': 'Propose one expense for human confirmation.',
          'args': {'amount': 'string', 'category': 'string', 'description?': 'string', 'day?': 'YYYY-MM-DD'}},
+        {'name': 'propose_product', 'description': 'Propose adding one catalogue item for human confirmation.',
+         'args': {'name': 'string', 'selling_price': 'string', 'kind?': 'product | service', 'cost_price?': 'string'}},
         {'name': 'confirm_pending', 'description': 'Confirm the awaiting action. Omit pending_action_id when exactly one waits.',
          'args': {'pending_action_id?': 'integer'}},
         {'name': 'cancel_pending', 'description': 'Decline the awaiting action.',
@@ -640,6 +677,10 @@ class LLMProvider:
             elif name == 'propose_expense':
                 write_intent, write_args = 'record_expense', {
                     k: args.get(k, '') for k in ('amount', 'category', 'description', 'day')
+                }
+            elif name == 'propose_product':
+                write_intent, write_args = 'add_catalogue_item', {
+                    k: args.get(k, '') for k in ('name', 'selling_price', 'kind', 'cost_price')
                 }
             elif name == 'confirm_pending':
                 write_intent = 'confirm_pending'

@@ -7,12 +7,13 @@ committed without an explicit confirm, and every reply comes from tool output.
 import difflib
 import re
 import uuid
+from decimal import Decimal, InvalidOperation
 
 from django.http import Http404
 from rest_framework.exceptions import ValidationError
 
 from .ai import ProviderError, fallback_plan, get_provider
-from .models import ActionLog, Conversation, Message, PendingAction
+from .models import ActionLog, Conversation, Message, PendingAction, ProductService
 from .tools import READ_TOOLS, WRITE_INTENTS, execute_tool
 
 
@@ -601,6 +602,10 @@ def _run_plan(plan, *, business, user, conversation, context, tool_runs, request
         return _prepare_expense_flow(
             business, user, conversation, plan.write_args, tool_runs, request_id
         )
+    if plan.write_intent == 'add_catalogue_item':
+        return _prepare_catalogue_flow(
+            business, user, conversation, plan.write_args, tool_runs, request_id
+        )
     if plan.write_intent:
         return 'I cannot do that yet through chat.', None
     return plan.message or 'Anything else?', None
@@ -797,6 +802,34 @@ def _prepare_expense_flow(business, user, conversation, args, tool_runs, request
     return f'{summary} Confirm to record it, or say no to cancel.', action
 
 
+def _prepare_catalogue_flow(business, user, conversation, args, tool_runs, request_id):
+    name = (args.get('name') or '').strip()
+    if not name:
+        return 'What should the new item be called, and what price should it sell for?', None
+    try:
+        price = Decimal(str(args.get('selling_price', '')))
+    except (InvalidOperation, ValueError, TypeError):
+        return f'What price should "{name}" sell for?', None
+    if price < 0:
+        return 'The selling price cannot be negative.', None
+    kind = (args.get('kind') or 'product').strip().lower()
+    if kind not in ('product', 'service'):
+        kind = 'product'
+    if ProductService.objects.filter(business=business, name__iexact=name).exists():
+        return f'"{name}" is already in the catalogue.', None
+    summary = f'New catalogue item: {name} at {business.currency} {price}.'
+    action = _preview_action(
+        business=business, user=user, conversation=conversation,
+        action_type=PendingAction.TYPE_CATALOGUE_ITEM,
+        payload={'name': name, 'kind': kind, 'selling_price': str(price),
+                 'cost_price': args.get('cost_price') or None,
+                 'stock_tracked': bool(args.get('stock_tracked', False)),
+                 'aliases': args.get('aliases') or []},
+        summary=summary, key=uuid.uuid4().hex,
+    )
+    return f'{summary} Confirm to add it, or say no to cancel.', action
+
+
 def _confirm_from_chat(business, user, action_id, confirm):
     result = confirm_action(business=business, user=user, action_id=action_id,
                             confirm=confirm)
@@ -965,5 +998,24 @@ def _execute_confirmed(*, business, user, action):
         reply = f"Stock receipt recorded: {len(result['lines'])} lines."
         for warning in result.get('warnings', []):
             reply += f' Warning: {warning}'
+        return reply, None
+    if action.action_type == PendingAction.TYPE_CATALOGUE_ITEM:
+        payload = action.payload
+        result = execute_tool(
+            business=business, user=user, name='add_catalogue_item', args={
+                'name': payload['name'], 'kind': payload.get('kind', 'product'),
+                'selling_price': payload['selling_price'],
+                'cost_price': payload.get('cost_price'),
+                'stock_tracked': payload.get('stock_tracked', False),
+                'aliases': payload.get('aliases', []),
+            },
+        )
+        action.record_type = 'ProductService'
+        action.record_ref = str(result['product_id'])
+        action.save(update_fields=['record_type', 'record_ref'])
+        reply = (
+            f"Added to the catalogue: {result['name']} "
+            f"at {_money(result['selling_price'], business.currency)}."
+        )
         return reply, None
     raise ValidationError({'action_type': 'Unknown prepared action.'})

@@ -18,6 +18,29 @@ def plan(text, awaiting=None):
     )
 
 
+class CatalogueParsingTests(SimpleTestCase):
+    def test_add_to_catalogue(self):
+        p = plan('add garri 5000 to catalogue')
+        self.assertEqual(p.write_intent, 'add_catalogue_item')
+        self.assertEqual(p.write_args['name'], 'garri')
+        self.assertEqual(p.write_args['selling_price'], '5000')
+        self.assertEqual(p.write_args['kind'], 'product')
+
+    def test_new_service(self):
+        p = plan('new service delivery 3000')
+        self.assertEqual(p.write_intent, 'add_catalogue_item')
+        self.assertEqual(p.write_args['name'], 'delivery')
+        self.assertEqual(p.write_args['kind'], 'service')
+
+    def test_missing_price_asks(self):
+        p = plan('add garri to catalogue')
+        self.assertEqual(p.write_intent, '')
+        self.assertTrue(p.clarify)
+
+    def test_stock_add_is_not_catalogue(self):
+        self.assertEqual(plan('add 10 garri to stock').write_intent, 'receive_stock')
+
+
 class QtyParsingTests(SimpleTestCase):
     def test_digits(self):
         self.assertEqual(_parse_qty_name('2 garri'), ('2', 'garri'))

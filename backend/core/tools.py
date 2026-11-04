@@ -5,6 +5,7 @@ facts. Write tools validate; the orchestrator holds them for confirmation.
 """
 
 from datetime import date, timedelta
+from decimal import Decimal, InvalidOperation
 
 from django.db.models import Q
 from rest_framework.exceptions import PermissionDenied, ValidationError
@@ -225,6 +226,53 @@ def record_expense_tool(*, business, user, amount, category, description='', day
     }
 
 
+def add_catalogue_item_tool(*, business, user, name, selling_price, kind='product',
+                            cost_price=None, stock_tracked=False, aliases=None):
+    """Create one catalogue item. Owner, manager, or inventory staff."""
+    _require(business, user, 'catalogue.write',
+             'Your role cannot manage the catalogue. Ask an owner, manager, or inventory staff.')
+    name = (name or '').strip()
+    if not name:
+        raise ValidationError({'name': 'Give the item a name.'})
+    kind = (kind or 'product').strip().lower()
+    if kind not in ('product', 'service'):
+        raise ValidationError({'kind': 'Must be product or service.'})
+    try:
+        price = Decimal(str(selling_price))
+    except (InvalidOperation, ValueError, TypeError):
+        raise ValidationError({'selling_price': 'Must be a number.'})
+    if price < 0:
+        raise ValidationError({'selling_price': 'Must be zero or more.'})
+    cost = None
+    if cost_price is not None and str(cost_price).strip() != '':
+        try:
+            cost = Decimal(str(cost_price))
+        except (InvalidOperation, ValueError, TypeError):
+            raise ValidationError({'cost_price': 'Must be a number.'})
+        if cost < 0:
+            raise ValidationError({'cost_price': 'Must be zero or more.'})
+    if ProductService.objects.filter(business=business, name__iexact=name).exists():
+        raise ValidationError({'name': f'"{name}" is already in the catalogue.'})
+    clean_aliases = []
+    for alias in aliases or []:
+        alias = str(alias).strip()
+        if alias and alias.lower() != name.lower() and alias not in clean_aliases:
+            clean_aliases.append(alias)
+    product = ProductService.objects.create(
+        business=business, name=name, aliases=clean_aliases, kind=kind,
+        selling_price=price, cost_price=cost,
+        stock_tracked=bool(stock_tracked), active=True,
+    )
+    return {
+        'product_id': product.pk,
+        'name': product.name,
+        'kind': product.kind,
+        'selling_price': str(product.selling_price),
+        'cost_price': str(product.cost_price) if product.cost_price is not None else None,
+        'stock_tracked': product.stock_tracked,
+    }
+
+
 def search_knowledge_tool(*, business, user, query):
     """Search owner-taught documents for this business only."""
     from .knowledge import search_documents
@@ -408,6 +456,7 @@ _TOOLS = {
     'confirm_and_record_sale': confirm_and_record_sale,
     'receive_stock': receive_stock_tool,
     'record_expense': record_expense_tool,
+    'add_catalogue_item': add_catalogue_item_tool,
     'get_business_report': get_business_report_tool,
     'get_sale_documents': get_sale_documents_tool,
     'get_sales_trend': get_sales_trend_tool,
@@ -418,7 +467,7 @@ READ_TOOLS = frozenset(
     {'get_business_context', 'search_products', 'check_stock', 'get_business_report',
      'get_sale_documents', 'get_sales_trend', 'search_knowledge'}
 )
-WRITE_INTENTS = frozenset({'prepare_sale', 'receive_stock', 'record_expense'})
+WRITE_INTENTS = frozenset({'prepare_sale', 'receive_stock', 'record_expense', 'add_catalogue_item'})
 
 
 def execute_tool(*, business, user, name, args):

@@ -474,10 +474,12 @@ class PendingAction(BusinessScopedModel):
     TYPE_SALE = 'sale'
     TYPE_EXPENSE = 'expense'
     TYPE_STOCK_RECEIPT = 'stock_receipt'
+    TYPE_CATALOGUE_ITEM = 'catalogue_item'
     TYPE_CHOICES = [
         (TYPE_SALE, 'Sale'),
         (TYPE_EXPENSE, 'Expense'),
         (TYPE_STOCK_RECEIPT, 'Stock receipt'),
+        (TYPE_CATALOGUE_ITEM, 'Catalogue item'),
     ]
     STATE_DRAFT = 'draft'
     STATE_AWAITING = 'awaiting_confirmation'

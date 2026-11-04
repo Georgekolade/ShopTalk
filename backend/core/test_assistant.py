@@ -338,6 +338,42 @@ class ExpenseFlowTests(AssistantCase):
         self.assertIsNone(response.data['action'])
 
 
+class CatalogueFlowTests(AssistantCase):
+    def test_product_preview_then_confirm(self):
+        first = self.ask('add Zobo 1500 to catalogue')
+        self.assertEqual(first.data['state'], 'awaiting_confirmation')
+        self.assertIn('Zobo', first.data['reply'])
+        self.assertEqual(ProductService.objects.filter(name='Zobo').count(), 0)
+        response = self.confirm(first.data['action']['id'])
+        self.assertEqual(response.data['state'], 'completed')
+        product = ProductService.objects.get(name='Zobo')
+        self.assertEqual(product.selling_price, Decimal('1500.00'))
+        self.assertEqual(product.kind, 'product')
+
+    def test_decline_adds_nothing(self):
+        first = self.ask('add Zobo 1500 to catalogue')
+        response = self.confirm(first.data['action']['id'], confirm=False)
+        self.assertIn('Cancelled', response.data['reply'])
+        self.assertEqual(ProductService.objects.filter(name='Zobo').count(), 0)
+
+    def test_duplicate_name_asks(self):
+        response = self.ask('add Garri 5kg 999 to catalogue')
+        self.assertIn('already in the catalogue', response.data['reply'])
+        self.assertIsNone(response.data['action'])
+
+    def test_missing_price_asks(self):
+        response = self.ask('add Zobo to catalogue')
+        self.assertIn('sell for', response.data['reply'])
+        self.assertIsNone(response.data['action'])
+
+    def test_staff_add_denied_at_confirm(self):
+        self.client.force_authenticate(self.staff)
+        first = self.ask('add Zobo 1500 to catalogue')
+        response = self.confirm(first.data['action']['id'])
+        self.assertEqual(response.data['state'], 'failed')
+        self.assertEqual(ProductService.objects.filter(name='Zobo').count(), 0)
+
+
 class StockReceiptFlowTests(AssistantCase):
     def test_receipt_preview_then_confirm(self):
         first = self.ask('we received 5 garri')
